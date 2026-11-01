@@ -1,3 +1,4 @@
+import { matchesWork } from './matching';
 import { providerName, getSourceAdapter } from './sources';
 import { App, TFile, normalizePath, requestUrl, stringifyYaml } from 'obsidian';
 import { getSources, upsertFrontmatter } from './merge';
@@ -51,14 +52,29 @@ export class Importer {
     return parseSourceHtml(response.text, ref, 'remote');
   }
 
-  import(metadata: SourceMetadata, target?: TFile): Promise<ImportResult> {
-    const next = this.queue.then(() => this.write(metadata, target));
+  import(metadata: SourceMetadata, target?: TFile, options: { createSeparate?: boolean } = {}): Promise<ImportResult> {
+    const next = this.queue.then(() => this.write(metadata, target, options.createSeparate));
     this.queue = next.catch(() => undefined);
     return next;
   }
 
   sources(file: TFile): SourceMetadata[] {
     return getSources(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {});
+  }
+
+  /** Exact source ownership takes precedence over title/author candidates. */
+  previewMatches(metadata: SourceMetadata): { exact?: TFile; candidates: TFile[]; warnings: string[] } {
+    const warnings: string[] = [];
+    const exact = this.findMatches(metadata, warnings);
+    if (exact.length > 1) throw new Error(`同一来源已关联多个文件，请先整理：${exact.map(f => f.path).join('；')}`);
+    if (exact[0]) return { exact: exact[0], candidates: [], warnings };
+    const candidates = this.app.vault.getMarkdownFiles().filter(file => {
+      const local = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!local || !matchesWork(local, metadata)) return false;
+      try { this.sources(file); return true; }
+      catch { return false; } // Invalid plugin state cannot be an association target.
+    }).sort((a, b) => a.path.localeCompare(b.path));
+    return { candidates, warnings };
   }
 
   private findMatches(ref: BookRef, warnings: string[]): TFile[] {
@@ -112,15 +128,21 @@ export class Importer {
     }
   }
 
-  private async write(metadata: SourceMetadata, explicitTarget?: TFile): Promise<ImportResult> {
+  private async write(metadata: SourceMetadata, explicitTarget?: TFile, createSeparate = false): Promise<ImportResult> {
     if (!metadata.title.trim()) throw new Error('请填写作品标题。');
-    const warnings = [...metadata.warnings];
-    const matches = this.findMatches(metadata, warnings);
-    if (matches.length > 1) throw new Error(`同一来源已关联多个文件，请先整理：${matches.map(f => f.path).join('；')}`);
+    if (explicitTarget && this.app.vault.getAbstractFileByPath(explicitTarget.path) !== explicitTarget) {
+      throw new Error('目标笔记已移动或删除，请重新选择。');
+    }
+    const plan = this.previewMatches(metadata);
+    const warnings = [...metadata.warnings, ...plan.warnings];
+    const matches = plan.exact ? [plan.exact] : [];
     if (explicitTarget && matches[0] && matches[0] !== explicitTarget) {
       throw new Error(`此来源已经关联 ${matches[0].path}，本次未改动其他文件。`);
     }
     const target = explicitTarget ?? matches[0];
+    if (!target && plan.candidates.length && !createSeparate) {
+      throw new Error(`发现书名与作者匹配的已有作品，请单独预览并选择关联或独立创建：${plan.candidates.map(f => f.path).join('；')}`);
+    }
     const cover = await this.cover(metadata, warnings);
     const options = { uid: `work-${crypto.randomUUID()}`, cover, summaryLength: this.settings().summaryLength };
     let adopted: string[] = [];

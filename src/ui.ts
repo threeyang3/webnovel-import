@@ -121,11 +121,13 @@ export class SingleImportModal extends Modal {
     const edited: SourceMetadata = structuredClone(original);
     this.form.createEl('h3', { text: `${providerName(original.provider)} · ${original.id}` });
     this.form.createEl('p', { text: '表单留空表示本次不采纳该字段；清除已有值请直接编辑作品属性。', cls: 'setting-item-description' });
+    let updateMatches: (() => void) | undefined;
     const set = (key: keyof SourceMetadata, value: unknown): void => {
       (edited as unknown as Record<string, unknown>)[key] = value;
       if (JSON.stringify(value) !== JSON.stringify(original[key])) edited.evidence[key] = 'manual:用户补填或修改';
       else if (original.evidence[key]) edited.evidence[key] = original.evidence[key];
       else delete edited.evidence[key];
+      if (key === 'title' || key === 'authors') updateMatches?.();
     };
     new Setting(this.form).setName('书名').addText(text => text.setValue(edited.title).onChange(value => set('title', value.trim())));
     new Setting(this.form).setName('作者').setDesc('多位作者用逗号分隔。').addText(text => text.setValue(edited.authors.join('，')).onChange(value => set('authors', value.split(/[,，]/).map(s => s.trim()).filter(Boolean))));
@@ -139,14 +141,48 @@ export class SingleImportModal extends Modal {
     new Setting(this.form).setName('连载状态').addDropdown(dropdown => dropdown.addOptions({ unknown: '未知', ongoing: '连载中', completed: '已完结', paused: '暂停' }).setValue(edited.serialization_status ?? 'unknown').onChange(value => set('serialization_status', value)));
     if (edited.last_updated_at) this.form.createEl('p', { text: `来源最近更新：${edited.last_updated_at}`, cls: 'setting-item-description' });
     if (edited.word_count_text) this.form.createEl('p', { text: `来源显示字数：${edited.word_count_text}`, cls: 'setting-item-description' });
+    const matchArea = this.form.createDiv({ cls: 'webnovel-matches' });
+    let selected: TFile | undefined;
+    let createSeparate = false;
+    let unresolved = false;
+    let matchError: string | undefined;
+    updateMatches = () => {
+      matchArea.empty(); selected = undefined; createSeparate = false; unresolved = false; matchError = undefined;
+      if (this.target) return;
+      try {
+        const plan = this.plugin.importer.previewMatches(edited);
+        for (const warning of plan.warnings) matchArea.createEl('p', { text: warning });
+        if (plan.exact) {
+          matchArea.createEl('p', { text: `已有相同来源，将更新：${plan.exact.path}` });
+          return;
+        }
+        if (!plan.candidates.length) return;
+        unresolved = true;
+        matchArea.createEl('h3', { text: '发现可能已存在的作品' });
+        matchArea.createEl('p', { text: '书名与作者匹配，仅作为候选。选择已有笔记可追加来源并保留个人内容，或选择独立创建。' });
+        new Setting(matchArea).setName('导入到').addDropdown(dropdown => {
+          dropdown.addOption('', '请选择关联目标或独立创建');
+          dropdown.addOption('new', '独立创建作品');
+          plan.candidates.forEach((file, index) => dropdown.addOption(String(index), file.path));
+          dropdown.setValue('').onChange(value => {
+            unresolved = !value;
+            createSeparate = value === 'new';
+            selected = value && !createSeparate ? plan.candidates[Number(value)] : undefined;
+          });
+        });
+      } catch (error) { matchError = errorText(error); matchArea.createEl('p', { text: matchError, cls: 'webnovel-error' }); }
+    };
+    updateMatches();
     new Setting(this.form).addButton(button => button.setButtonText(this.target ? '保存来源关联' : '导入作品').setCta().onClick(async () => {
       button.setDisabled(true);
       try {
         if (yearText && !/^[12]\d{3}$/.test(yearText)) throw new Error('年份请填四位数字，未知时留空。');
         set('first_published_year', yearText ? Number(yearText) : undefined);
         if (edited.cover_url && !/^https?:\/\//i.test(edited.cover_url)) throw new Error('封面链接须为 http 或 https 地址。');
+        if (matchError) throw new Error(matchError);
+        if (unresolved) throw new Error('请先选择关联已有作品或独立创建。');
         this.status.setText('正在保存作品资料…');
-        const result = await this.plugin.importer.import(edited, this.target);
+        const result = await this.plugin.importer.import(edited, this.target ?? selected, { createSeparate });
         this.initial?.onSaved?.();
         new Notice(`${result.created ? '已创建' : '已更新'}：${result.file.basename}${result.warnings.length ? `\n${result.warnings.join('\n')}` : ''}`, 8000);
         await this.app.workspace.getLeaf(false).openFile(result.file);
