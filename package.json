@@ -1,6 +1,6 @@
 {
   "name": "webnovel-import",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Obsidian web novel metadata importer for Qidian and Fanqie",
   "scripts": {

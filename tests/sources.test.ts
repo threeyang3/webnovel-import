@@ -20,6 +20,30 @@ const fanqieHtml = `<!doctype html><html><head>
 <div class="recommendation">推荐另一部作品</div><div class="comment">用户评论内容</div>
 </body></html>`;
 const fanqieRef = parseBookUrl('https://fanqienovel.com/page/7143038691944959011');
+const qidianRef = parseBookUrl('https://www.qidian.com/book/1010868264/');
+// Synthetic text in the DOM structure observed in the actual rendered Qidian page.
+// The real downloaded page is deliberately kept outside the repository.
+const qidianMeta = `<meta property="og:novel:book_name" content="元标签书名">
+  <meta property="og:novel:author" content="元标签作者">
+  <meta property="og:novel:read_url" content="https://www.qidian.com/book/1010868264/">
+  <meta property="og:image" content="//bookcover.yuewen.com/qdbimg/349573/1010868264/180.webp">
+  <meta property="og:novel:status" content="连载">
+  <meta property="og:description" content="元标签简介">
+  <meta property="og:novel:update_time" content="2026-11-01 12:00:00">`;
+const qidianVisible = `<!doctype html><html><head>${qidianMeta}
+  <script type="application/ld+json">{"@type":"Book","@id":"https://www.qidian.com/book/999/","image":"https://example.com/recommendation.jpg"}</script>
+  </head><body><div id="book-detail">
+  <a id="bookImg" data-bid="1010868264"><img src="//bookcover.yuewen.com/qdbimg/349573/1010868264/600.webp"></a>
+  <div class="book-info-top"><h1 id="bookName">页面书名</h1>
+  <p class="book-meta"><span class="author">作者:页面作者</span><span class="update-time">更新时间:2025-01-02 03:04:05</span></p>
+  <a class="book-latest-chapter">最新章节: 测试番外</a>
+  <p class="book-attribute"><span>完本</span><span class="dot">·</span><span>签约</span><span>VIP</span>
+  <a>玄幻</a><a>异世大陆</a><a>轻小说</a></p>
+  <p class="intro">分类宣传语，不是作品简介。</p>
+  <p class="count"><em>446.77万</em><cite>字</cite><em>999万</em><cite>总推荐</cite></p>
+  </div></div><p id="book-intro-detail">测试简介第一段。<br>第二段提到2020年。<br>第三段。</p>
+  <div class="recommendation"><h1>推荐书名</h1><img src="https://example.com/other.jpg"></div>
+  </body></html>`;
 
 test('normalizes recognized book URLs while preserving 19-digit identifiers exactly', () => {
   assert.deepEqual(parseBookUrl('https://fanqienovel.com/page/7143038691944959011?x=y#foo'), fanqieRef);
@@ -80,18 +104,43 @@ test('does not emit an unknown status when an optional status field is absent or
   }
 });
 
-test('requires explicit Qidian novel metadata; challenge and generic page titles do not count as books', () => {
-  const ref = parseBookUrl('https://www.qidian.com/book/1010868264/');
-  const html = `<meta property="og:novel:book_name" content="合成起点作品">
-    <meta property="og:novel:author" content="合成作者">
-    <meta property="og:novel:status" content="连载">
-    <meta property="og:description" content="合成简介">
-    <meta property="og:novel:update_time" content="2026-11-01 12:00:00">`;
-  const book = parseSourceHtml(html, ref);
-  assert.equal(book.title, '合成起点作品');
+test('uses the verified Qidian book DOM, preserving synopsis breaks and ignoring recommendations', () => {
+  const book = parseSourceHtml(qidianVisible, qidianRef, 'browser');
+  assert.equal(book.title, '页面书名');
+  assert.deepEqual(book.authors, ['页面作者']);
+  assert.equal(book.description, '测试简介第一段。\n第二段提到2020年。\n第三段。');
+  assert.equal(book.cover_url, 'https://bookcover.yuewen.com/qdbimg/349573/1010868264/600.webp');
+  assert.deepEqual(book.tags, ['玄幻', '异世大陆', '轻小说']);
+  assert.equal(book.serialization_status, 'completed');
+  assert.equal(book.word_count_text, '446.77万字');
+  assert.equal(book.last_updated_at, '2025-01-02 03:04:05');
+  assert.equal(book.latest_chapter, '测试番外');
+  assert.equal(book.first_published_at, undefined);
+  assert.equal(book.first_published_year, undefined);
+  assert.equal(book.acquisition, 'browser');
+  assert.match(book.evidence.description, /book-intro-detail/);
+  assert.match(book.evidence.identity, /read_url/);
+});
+
+test('keeps explicit Qidian novel metadata as a fallback when its read URL establishes identity', () => {
+  const book = parseSourceHtml(qidianMeta, qidianRef, 'html');
+  assert.equal(book.title, '元标签书名');
+  assert.deepEqual(book.authors, ['元标签作者']);
+  assert.equal(book.description, '元标签简介');
+  assert.equal(book.cover_url, 'https://bookcover.yuewen.com/qdbimg/349573/1010868264/180.webp');
   assert.equal(book.serialization_status, 'ongoing');
   assert.equal(book.first_published_year, undefined);
-  assert.ok(book.warnings.some(warning => warning.includes('尚未验证成功')));
-  assert.throws(() => parseSourceHtml('<html><head><script src="/C2WF946J0/probe.js"></script></head><body></body></html>', ref), /未识别/);
-  assert.throws(() => parseSourceHtml('<title>安全验证</title><h1>欢迎访问</h1><meta name="author" content="网站">', ref), /未识别/);
+  assert.equal(book.warnings.some(warning => warning.includes('尚未验证成功')), false);
+});
+
+test('rejects missing or conflicting current-book identity, challenge pages and recommendation-only identity', () => {
+  const noIdentity = qidianMeta.replace(/<meta property="og:novel:read_url"[^>]+>/, '');
+  assert.throws(() => parseSourceHtml(noIdentity, qidianRef, 'html'), /作品标识/);
+  assert.throws(() => parseSourceHtml(noIdentity, qidianRef, 'remote'), /作品标识/);
+  assert.throws(() => parseSourceHtml(qidianMeta.replace('/book/1010868264/', '/book/1010868265/'), qidianRef), /不一致/);
+  assert.throws(() => parseSourceHtml(qidianVisible.replace('data-bid="1010868264"', 'data-bid="1010868265"'), qidianRef), /不一致/);
+  const recommendationOnly = `${noIdentity}<script type="application/ld+json">{"itemListElement":[{"@id":"https://www.qidian.com/book/1010868264/"}]}</script>`;
+  assert.throws(() => parseSourceHtml(recommendationOnly, qidianRef, 'html'), /作品标识/);
+  assert.throws(() => parseSourceHtml('<html><head><script src="/C2WF946J0/probe.js"></script></head><body></body></html>', qidianRef), /未识别/);
+  assert.throws(() => parseSourceHtml('<title>安全验证</title><h1>欢迎访问</h1><meta name="author" content="网站">', qidianRef), /未识别/);
 });

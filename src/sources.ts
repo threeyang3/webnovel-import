@@ -27,6 +27,15 @@ function text(root: ParentNode, selector: string): string | undefined {
   return clean(root.querySelector(selector)?.textContent);
 }
 
+function textWithBreaks(root: ParentNode, selector: string): string | undefined {
+  const element = root.querySelector(selector);
+  if (!element) return undefined;
+  const copy = element.cloneNode(true) as Element;
+  copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+  copy.querySelectorAll('script, style').forEach(node => node.remove());
+  return clean(copy.textContent?.replace(/\r\n?/g, '\n').replace(/[\t ]*\n[\t ]*/g, '\n'));
+}
+
 function meta(doc: Document, key: string): string | undefined {
   return clean(doc.querySelector(`meta[property="${key}"], meta[name="${key}"]`)?.getAttribute('content'));
 }
@@ -76,35 +85,56 @@ function fanqieCover(doc: Document, ref: BookRef): { url: string; evidence: stri
   return { url, evidence: '作品页 .page-header-info .book-cover-img[src]，已排除已知加载占位图' };
 }
 
-/** Read only string URL identities. No scripts are executed and no numeric IDs are parsed. */
-function checkIdentity(doc: Document, ref: BookRef): void {
-  const candidates = [doc.querySelector('link[rel="canonical"]')?.getAttribute('href'),
-    meta(doc, 'og:url'), meta(doc, 'og:novel:book_url')];
-  for (const script of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
-    // Fanqie's public Baidu JSON-LD block identifies the book with an @id URL.
-    for (const match of (script.textContent || '').matchAll(/"@id"\s*:\s*("(?:[^"\\]|\\.)*")/g)) {
-      try { candidates.push(JSON.parse(match[1]) as string); } catch { /* Ignore malformed optional JSON strings. */ }
+/** Check the current page, not every recommended entity mentioned by JSON-LD. */
+function checkIdentity(doc: Document, ref: BookRef): string {
+  const identities: { book: BookRef; evidence: string }[] = [];
+  const addUrl = (value: string | null | undefined, evidence: string): void => {
+    if (!value) return;
+    try { identities.push({ book: parseBookUrl(new URL(value, ref.url).href), evidence }); }
+    catch { /* A homepage, author or other non-book URL is not book identity evidence. */ }
+  };
+  addUrl(doc.querySelector('link[rel="canonical"]')?.getAttribute('href'), 'link[rel="canonical"]');
+  for (const key of ['og:url', 'og:novel:book_url', 'og:novel:read_url']) addUrl(meta(doc, key), `meta ${key}`);
+  if (ref.provider === 'qidian') {
+    const id = doc.querySelector('#book-detail #bookImg')?.getAttribute('data-bid');
+    if (id && /^\d+$/.test(id)) {
+      identities.push({ book: { ...ref, id }, evidence: '#book-detail #bookImg[data-bid]' });
     }
   }
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    let actual: BookRef;
-    try { actual = parseBookUrl(new URL(candidate, ref.url).href); }
-    catch { continue; } // Non-book schema IDs are irrelevant.
-    if (actual.provider !== ref.provider || actual.id !== ref.id) {
+
+  if (!identities.length && ref.provider === 'fanqie') {
+    // Fanqie's real public page has a top-level book @id. Nested recommendation
+    // IDs cannot establish this page's identity; multiple root books are ambiguous.
+    for (const script of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+      let data: unknown;
+      try { data = JSON.parse(script.textContent || ''); } catch { continue; }
+      const roots = Array.isArray(data) ? data : [data];
+      for (const root of roots) {
+        if (root && typeof root === 'object' && typeof (root as Record<string, unknown>)['@id'] === 'string') {
+          addUrl((root as Record<string, string>)['@id'], '作品页 JSON-LD 顶层 @id');
+        }
+      }
+    }
+  }
+  if (!identities.length) {
+    throw new Error('未识别到可核对的作品标识，不能将页面资料绑定到输入链接；请提供完整作品详情页或使用手动建档。');
+  }
+  for (const { book } of identities) {
+    if (book.provider !== ref.provider || book.id !== ref.id) {
       throw new Error('页面标识与输入的作品链接不一致，请核对链接和 HTML 文件。');
     }
   }
+  return identities.map(identity => identity.evidence).join('；');
 }
 
 export function parseSourceHtml(
-  html: string, ref: BookRef, acquisition: 'remote' | 'html' = 'remote',
+  html: string, ref: BookRef, acquisition: 'remote' | 'html' | 'browser' = 'remote',
 ): SourceMetadata {
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  checkIdentity(doc, ref);
+  const identityEvidence = checkIdentity(doc, ref);
   const result: SourceMetadata = {
     ...ref, title: '', authors: [], fetched_at: new Date().toISOString(), acquisition,
-    evidence: {}, warnings: [],
+    evidence: { identity: identityEvidence }, warnings: [],
   };
 
   if (ref.provider === 'fanqie') {
@@ -135,29 +165,51 @@ export function parseSourceHtml(
     if (result.last_updated_at) result.evidence.last_updated_at = '作品页 .info-last-time；平台原始显示时间，非首发日期';
     if (result.latest_chapter) result.evidence.latest_chapter = '作品页 .info-last-title';
   } else {
-    // Qidian online access currently returned a challenge. Only explicit novel meta fields
-    // are supported here; a generic title/description is never enough to identify a book.
-    result.title = meta(doc, 'og:novel:book_name') || '';
-    const author = meta(doc, 'og:novel:author');
+    // These selectors were verified on Qidian's actual rendered book detail page.
+    // The page's short .intro slogan is not the full book synopsis.
+    const header = doc.querySelector('#book-detail .book-info-top');
+    const visibleTitle = header ? text(header, '#bookName') : undefined;
+    const visibleAuthor = header ? clean(text(header, '.book-meta .author')?.replace(/^作者\s*[：:]\s*/, '')) : undefined;
+    result.title = visibleTitle || meta(doc, 'og:novel:book_name') || '';
+    const author = visibleAuthor || meta(doc, 'og:novel:author');
     if (author) result.authors = [author];
-    result.description = meta(doc, 'og:novel:description') || meta(doc, 'og:description');
-    result.cover_url = imageUrl(meta(doc, 'og:image'), ref.url);
+
+    const visibleDescription = textWithBreaks(doc, '#book-intro-detail');
+    result.description = visibleDescription || meta(doc, 'og:novel:description') || meta(doc, 'og:description');
+    const cover = doc.querySelector('#book-detail #bookImg');
+    const visibleCover = cover?.getAttribute('data-bid') === ref.id
+      ? imageUrl(cover.querySelector('img')?.getAttribute('src'), ref.url) : undefined;
+    result.cover_url = visibleCover || imageUrl(meta(doc, 'og:image'), ref.url);
+
+    const visibleTags = header ? Array.from(header.querySelectorAll('.book-attribute a'))
+      .map(link => clean(link.textContent)).filter((tag): tag is string => Boolean(tag)) : [];
     const category = meta(doc, 'og:novel:category');
-    if (category) result.tags = [category];
-    result.serialization_status = status(meta(doc, 'og:novel:status'));
-    result.word_count_text = meta(doc, 'og:novel:word_count');
-    result.last_updated_at = meta(doc, 'og:novel:update_time');
-    result.latest_chapter = meta(doc, 'og:novel:latest_chapter_name');
-    result.evidence.title = 'meta og:novel:book_name';
-    result.evidence.authors = 'meta og:novel:author';
-    if (result.description) result.evidence.description = 'meta og:novel:description / og:description';
-    if (result.cover_url) result.evidence.cover_url = 'meta og:image';
-    if (result.tags) result.evidence.tags = 'meta og:novel:category';
-    if (result.serialization_status) result.evidence.serialization_status = 'meta og:novel:status';
-    if (result.word_count_text) result.evidence.word_count_text = 'meta og:novel:word_count';
-    if (result.last_updated_at) result.evidence.last_updated_at = 'meta og:novel:update_time；非首发日期';
-    if (result.latest_chapter) result.evidence.latest_chapter = 'meta og:novel:latest_chapter_name';
-    result.warnings.push('起点适配基于公开元标签格式，当前站点在线访问尚未验证成功。');
+    if (visibleTags.length) result.tags = [...new Set(visibleTags)];
+    else if (category) result.tags = [category];
+    const visibleStatus = header ? Array.from(header.querySelectorAll('.book-attribute span'))
+      .map(span => status(clean(span.textContent))).find(value => value !== undefined) : undefined;
+    result.serialization_status = visibleStatus || status(meta(doc, 'og:novel:status'));
+
+    const wordLabel = header ? Array.from(header.querySelectorAll('.count cite'))
+      .find(label => clean(label.textContent) === '字') : undefined;
+    const wordValue = wordLabel?.previousElementSibling;
+    const visibleWords = wordValue?.tagName.toLowerCase() === 'em' && clean(wordValue.textContent)
+      ? `${clean(wordValue.textContent)}字` : undefined;
+    result.word_count_text = visibleWords || meta(doc, 'og:novel:word_count');
+    const visibleUpdated = header ? clean(text(header, '.book-meta .update-time')?.replace(/^更新时间\s*[：:]\s*/, '')) : undefined;
+    const visibleChapter = header ? clean(text(header, '.book-latest-chapter')?.replace(/^最新章节\s*[：:]\s*/, '')) : undefined;
+    result.last_updated_at = visibleUpdated || meta(doc, 'og:novel:update_time');
+    result.latest_chapter = visibleChapter || meta(doc, 'og:novel:latest_chapter_name');
+
+    result.evidence.title = visibleTitle ? '#book-detail .book-info-top #bookName' : 'meta og:novel:book_name';
+    result.evidence.authors = visibleAuthor ? '#book-detail .book-info-top .book-meta .author' : 'meta og:novel:author';
+    if (result.description) result.evidence.description = visibleDescription ? '#book-intro-detail；保留br换行' : 'meta og:novel:description / og:description';
+    if (result.cover_url) result.evidence.cover_url = visibleCover ? '#book-detail #bookImg[data-bid与作品ID一致] img[src]' : 'meta og:image';
+    if (result.tags) result.evidence.tags = visibleTags.length ? '#book-detail .book-info-top .book-attribute a' : 'meta og:novel:category';
+    if (result.serialization_status) result.evidence.serialization_status = visibleStatus ? '#book-detail .book-info-top .book-attribute span' : 'meta og:novel:status';
+    if (result.word_count_text) result.evidence.word_count_text = visibleWords ? '#book-detail .book-info-top .count；仅取字数，保留显示精度' : 'meta og:novel:word_count';
+    if (result.last_updated_at) result.evidence.last_updated_at = visibleUpdated ? '#book-detail .book-info-top .update-time；非首发日期' : 'meta og:novel:update_time；非首发日期';
+    if (result.latest_chapter) result.evidence.latest_chapter = visibleChapter ? '#book-detail .book-info-top .book-latest-chapter' : 'meta og:novel:latest_chapter_name';
   }
 
   if (!result.title || result.authors.length === 0) {

@@ -12,15 +12,22 @@ export class SingleImportModal extends Modal {
   private form!: HTMLElement;
   private metadata?: SourceMetadata;
   private generation = 0;
+  private fallback?: HTMLDetailsElement;
 
-  constructor(private plugin: WebnovelPlugin, private target?: TFile) { super(plugin.app); }
+  constructor(
+    private plugin: WebnovelPlugin,
+    private target?: TFile,
+    private initial?: { url?: string; metadata?: SourceMetadata; onSaved?: () => void },
+  ) { super(plugin.app); }
 
   onOpen(): void {
+    this.url = this.initial?.url ?? this.initial?.metadata?.url ?? '';
+    this.metadata = this.initial?.metadata;
     this.contentEl.addClass('webnovel-import-modal');
     this.contentEl.createEl('h2', { text: this.target ? '关联网文来源' : '导入网文作品' });
     this.contentEl.createEl('p', { text: this.target ? `将来源关联到「${this.target.basename}」。已有人工内容会保留。` : '粘贴起点或番茄作品详情页链接。获取后可补填缺失资料。' });
     new Setting(this.contentEl).setName('作品链接').addText(text => {
-      text.setPlaceholder('https://fanqienovel.com/page/…').onChange(value => {
+      text.setValue(this.url).setPlaceholder('https://fanqienovel.com/page/…').onChange(value => {
         this.url = value; this.generation++; this.metadata = undefined;
         this.form?.empty(); this.status?.setText('');
       });
@@ -37,14 +44,52 @@ export class SingleImportModal extends Modal {
         this.renderForm();
       } catch (error) { this.status.setText(errorText(error)); }
     }));
+    actions.addButton(button => button.setButtonText('打开作品页').onClick(() => {
+      try { this.plugin.openSourcePage(this.url, this.target); }
+      catch (error) { this.status.setText(errorText(error)); }
+    }));
     const details = this.contentEl.createEl('details');
+    this.fallback = details;
     details.createEl('summary', { text: '从正常打开的作品页面 HTML 解析' });
-    details.createEl('p', { text: '可粘贴浏览器另存为 HTML 后的页面内容；插件只解析，不执行其中的脚本。' });
+    details.createEl('p', { text: '先填写作品链接，在浏览器正常打开该作品并另存为 HTML，再选择文件或粘贴页面内容。插件只解析，不执行页面脚本。文件中的作品标识须与链接一致。' });
+    details.createEl('p', { text: '也可在设置中复制浏览器采集书签。正常打开作品后点击书签，资料会复制到剪贴板并返回预览；未自动返回时，运行“从浏览器采集结果导入”。核对后再确认保存。' });
+    const fileInput = details.createEl('input', { type: 'file', attr: { accept: '.html,.htm,text/html' } });
+    fileInput.hidden = true;
+    new Setting(details).addButton(button => button.setButtonText('选择 HTML 文件').onClick(() => fileInput.click()));
     const htmlArea = details.createEl('textarea', { cls: 'webnovel-html-input', attr: { placeholder: '<!doctype html>…', 'aria-label': '作品页 HTML' } });
-    htmlArea.addEventListener('input', () => { this.html = htmlArea.value; });
+    htmlArea.addEventListener('input', () => {
+      this.html = htmlArea.value; this.generation++; this.metadata = undefined;
+      this.form?.empty(); this.status?.setText('已填写 HTML，点击“解析 HTML”预览作品资料。');
+    });
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      fileInput.value = '';
+      if (!file) return;
+      const generation = ++this.generation;
+      this.form.empty(); this.metadata = undefined;
+      details.open = true;
+      this.status.setText('正在读取并解析 HTML 文件…');
+      try {
+        // Bind this file read to the URL selected when it started. Editing the URL
+        // invalidates the generation, so the file cannot be applied to another book.
+        const ref = parseBookUrl(this.url);
+        const html = await file.text();
+        if (generation !== this.generation) return;
+        this.html = html; htmlArea.value = html;
+        this.metadata = parseSourceHtml(html, ref, 'html');
+        this.status.setText(this.metadata.warnings.length ? this.metadata.warnings.join('；') : '已解析作品资料，请核对后导入。');
+        this.renderForm();
+      } catch (error) {
+        if (generation === this.generation) this.status.setText(errorText(error));
+      }
+    });
     new Setting(details).addButton(button => button.setButtonText('解析 HTML').onClick(() => void this.acquire(button, true)));
     this.status = this.contentEl.createEl('p', { cls: 'webnovel-status', attr: { role: 'status' } });
     this.form = this.contentEl.createDiv();
+    if (this.metadata) {
+      this.status.setText(this.metadata.warnings.length ? this.metadata.warnings.join('；') : '已取得作品资料，请核对后导入。');
+      this.renderForm();
+    }
   }
 
   private async acquire(button: ButtonComponent, fromHtml: boolean): Promise<void> {
@@ -59,7 +104,12 @@ export class SingleImportModal extends Modal {
       this.metadata = metadata;
       this.status.setText(this.metadata.warnings.length ? this.metadata.warnings.join('；') : '已取得作品资料。');
       this.renderForm();
-    } catch (error) { if (generation === this.generation) this.status.setText(errorText(error)); }
+    } catch (error) {
+      if (generation === this.generation) {
+        this.status.setText(errorText(error));
+        if (this.fallback) this.fallback.open = true;
+      }
+    }
     finally { button.setDisabled(false); }
   }
 
@@ -96,6 +146,7 @@ export class SingleImportModal extends Modal {
         if (edited.cover_url && !/^https?:\/\//i.test(edited.cover_url)) throw new Error('封面链接须为 http 或 https 地址。');
         this.status.setText('正在保存作品资料…');
         const result = await this.plugin.importer.import(edited, this.target);
+        this.initial?.onSaved?.();
         new Notice(`${result.created ? '已创建' : '已更新'}：${result.file.basename}${result.warnings.length ? `\n${result.warnings.join('\n')}` : ''}`, 8000);
         await this.app.workspace.getLeaf(false).openFile(result.file);
         this.close();
@@ -146,7 +197,12 @@ export class BatchImportModal extends Modal {
             results.createEl('li', { text: `${result.created ? '新建' : '更新'}：${result.file.path}${result.warnings.length ? `（${result.warnings.join('；')}）` : ''}` });
             done++;
           } catch (error) {
-            results.createEl('li', { text: `${url}：${errorText(error)}`, cls: 'webnovel-error' }); failures++;
+            const item = results.createEl('li', { cls: 'webnovel-error' });
+            item.createSpan({ text: `${url}：${errorText(error)} ` });
+            new ButtonComponent(item).setButtonText('单独处理').onClick(() => {
+              new SingleImportModal(this.plugin, undefined, { url }).open();
+            });
+            failures++;
           }
           if (done + failures < urls.size && !this.cancelled) await new Promise(resolve => window.setTimeout(resolve, 1200));
         }

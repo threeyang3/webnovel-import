@@ -44,7 +44,8 @@ export class Importer {
     const ref = parseBookUrl(input);
     const response = await requestUrl({ url: ref.url, headers: { Accept: 'text/html' }, throw: false });
     if (response.status !== 200) {
-      throw new Error(`${providerName(ref.provider)}返回 HTTP ${response.status}，未获得可解析的作品页。可在浏览器正常打开后提供页面 HTML，或手动补填。`);
+      const recovery = ref.provider === 'qidian' ? '请正常打开作品页，使用设置中的浏览器采集书签，或选择另存的 HTML 文件。' : '可在浏览器正常打开后选择另存的 HTML 文件，或手动补填。';
+      throw new Error(`${providerName(ref.provider)}返回 HTTP ${response.status}，未获得可解析的作品页。${recovery}`);
     }
     return parseSourceHtml(response.text, ref, 'remote');
   }

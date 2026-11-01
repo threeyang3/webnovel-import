@@ -21,7 +21,7 @@ export interface SourceMetadata extends BookRef {
   fetched_at: string;
   /** Source fields retained from older responses, mapped to their last observed time. */
   retained_fields?: Record<string, string>;
-  acquisition: 'remote' | 'html' | 'manual';
+  acquisition: 'remote' | 'html' | 'browser' | 'manual';
   evidence: Record<string, string>;
   warnings: string[];
 }
