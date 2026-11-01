@@ -1,0 +1,4 @@
+node_modules/
+.test-build/
+# main.js is committed alongside source for direct manual installation.
+*.log

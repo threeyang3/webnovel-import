@@ -1,0 +1,10 @@
+.webnovel-import-modal { max-width: 760px; }
+.webnovel-import-modal .setting-item-control { flex-wrap: wrap; }
+.webnovel-import-modal .setting-item-control input[type="text"] { min-width: 240px; width: 100%; }
+.webnovel-import-modal .setting-item-control textarea { min-width: 300px; width: 100%; resize: vertical; }
+.webnovel-links-input, .webnovel-html-input { width: 100%; min-height: 160px; resize: vertical; }
+.webnovel-import-modal details { margin: 12px 0; color: var(--text-muted); }
+.webnovel-import-modal details summary { cursor: pointer; }
+.webnovel-status { white-space: pre-wrap; color: var(--text-muted); }
+.webnovel-results { max-height: 280px; overflow: auto; overflow-wrap: anywhere; }
+.webnovel-error { color: var(--text-error); }
