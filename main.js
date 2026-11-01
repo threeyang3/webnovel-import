@@ -278,6 +278,20 @@ function parseSourceHtml(html, ref, acquisition = "remote") {
 // src/main.ts
 var import_obsidian3 = require("obsidian");
 
+// src/matching.ts
+var normalize = (value) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+function authorNames(value) {
+  const values = typeof value === "string" ? [value] : value;
+  if (!Array.isArray(values) || !values.length || values.some((v) => typeof v !== "string" || !normalize(v))) return [];
+  return [...new Set(values.map((v) => normalize(v)))].sort();
+}
+function matchesWork(local, incoming) {
+  if (typeof local.title !== "string" || !normalize(local.title) || normalize(local.title) !== normalize(incoming.title)) return false;
+  const left = authorNames(local.authors);
+  const right = authorNames(incoming.authors);
+  return left.length > 0 && left.length === right.length && left.every((name, index) => name === right[index]);
+}
+
 // src/importer.ts
 var import_obsidian = require("obsidian");
 
@@ -475,13 +489,31 @@ var Importer = class {
     }
     return parseSourceHtml(response.text, ref, "remote");
   }
-  import(metadata, target) {
-    const next = this.queue.then(() => this.write(metadata, target));
+  import(metadata, target, options = {}) {
+    const next = this.queue.then(() => this.write(metadata, target, options.createSeparate));
     this.queue = next.catch(() => void 0);
     return next;
   }
   sources(file) {
     return getSources(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {});
+  }
+  /** Exact source ownership takes precedence over title/author candidates. */
+  previewMatches(metadata) {
+    const warnings = [];
+    const exact = this.findMatches(metadata, warnings);
+    if (exact.length > 1) throw new Error(`\u540C\u4E00\u6765\u6E90\u5DF2\u5173\u8054\u591A\u4E2A\u6587\u4EF6\uFF0C\u8BF7\u5148\u6574\u7406\uFF1A${exact.map((f) => f.path).join("\uFF1B")}`);
+    if (exact[0]) return { exact: exact[0], candidates: [], warnings };
+    const candidates = this.app.vault.getMarkdownFiles().filter((file) => {
+      const local = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!local || !matchesWork(local, metadata)) return false;
+      try {
+        this.sources(file);
+        return true;
+      } catch {
+        return false;
+      }
+    }).sort((a, b) => a.path.localeCompare(b.path));
+    return { candidates, warnings };
   }
   findMatches(ref, warnings) {
     const key = sourceKey(ref);
@@ -531,15 +563,21 @@ var Importer = class {
       return void 0;
     }
   }
-  async write(metadata, explicitTarget) {
+  async write(metadata, explicitTarget, createSeparate = false) {
     if (!metadata.title.trim()) throw new Error("\u8BF7\u586B\u5199\u4F5C\u54C1\u6807\u9898\u3002");
-    const warnings = [...metadata.warnings];
-    const matches = this.findMatches(metadata, warnings);
-    if (matches.length > 1) throw new Error(`\u540C\u4E00\u6765\u6E90\u5DF2\u5173\u8054\u591A\u4E2A\u6587\u4EF6\uFF0C\u8BF7\u5148\u6574\u7406\uFF1A${matches.map((f) => f.path).join("\uFF1B")}`);
+    if (explicitTarget && this.app.vault.getAbstractFileByPath(explicitTarget.path) !== explicitTarget) {
+      throw new Error("\u76EE\u6807\u7B14\u8BB0\u5DF2\u79FB\u52A8\u6216\u5220\u9664\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u3002");
+    }
+    const plan = this.previewMatches(metadata);
+    const warnings = [...metadata.warnings, ...plan.warnings];
+    const matches = plan.exact ? [plan.exact] : [];
     if (explicitTarget && matches[0] && matches[0] !== explicitTarget) {
       throw new Error(`\u6B64\u6765\u6E90\u5DF2\u7ECF\u5173\u8054 ${matches[0].path}\uFF0C\u672C\u6B21\u672A\u6539\u52A8\u5176\u4ED6\u6587\u4EF6\u3002`);
     }
     const target = explicitTarget ?? matches[0];
+    if (!target && plan.candidates.length && !createSeparate) {
+      throw new Error(`\u53D1\u73B0\u4E66\u540D\u4E0E\u4F5C\u8005\u5339\u914D\u7684\u5DF2\u6709\u4F5C\u54C1\uFF0C\u8BF7\u5355\u72EC\u9884\u89C8\u5E76\u9009\u62E9\u5173\u8054\u6216\u72EC\u7ACB\u521B\u5EFA\uFF1A${plan.candidates.map((f) => f.path).join("\uFF1B")}`);
+    }
     const cover = await this.cover(metadata, warnings);
     const options = { uid: `work-${crypto.randomUUID()}`, cover, summaryLength: this.settings().summaryLength };
     let adopted = [];
@@ -706,11 +744,13 @@ var SingleImportModal = class extends import_obsidian2.Modal {
     const edited = structuredClone(original);
     this.form.createEl("h3", { text: `${providerName(original.provider)} \xB7 ${original.id}` });
     this.form.createEl("p", { text: "\u8868\u5355\u7559\u7A7A\u8868\u793A\u672C\u6B21\u4E0D\u91C7\u7EB3\u8BE5\u5B57\u6BB5\uFF1B\u6E05\u9664\u5DF2\u6709\u503C\u8BF7\u76F4\u63A5\u7F16\u8F91\u4F5C\u54C1\u5C5E\u6027\u3002", cls: "setting-item-description" });
+    let updateMatches;
     const set = (key, value) => {
       edited[key] = value;
       if (JSON.stringify(value) !== JSON.stringify(original[key])) edited.evidence[key] = "manual:\u7528\u6237\u8865\u586B\u6216\u4FEE\u6539";
       else if (original.evidence[key]) edited.evidence[key] = original.evidence[key];
       else delete edited.evidence[key];
+      if (key === "title" || key === "authors") updateMatches?.();
     };
     new import_obsidian2.Setting(this.form).setName("\u4E66\u540D").addText((text2) => text2.setValue(edited.title).onChange((value) => set("title", value.trim())));
     new import_obsidian2.Setting(this.form).setName("\u4F5C\u8005").setDesc("\u591A\u4F4D\u4F5C\u8005\u7528\u9017\u53F7\u5206\u9694\u3002").addText((text2) => text2.setValue(edited.authors.join("\uFF0C")).onChange((value) => set("authors", value.split(/[,，]/).map((s) => s.trim()).filter(Boolean))));
@@ -726,14 +766,55 @@ var SingleImportModal = class extends import_obsidian2.Modal {
     new import_obsidian2.Setting(this.form).setName("\u8FDE\u8F7D\u72B6\u6001").addDropdown((dropdown) => dropdown.addOptions({ unknown: "\u672A\u77E5", ongoing: "\u8FDE\u8F7D\u4E2D", completed: "\u5DF2\u5B8C\u7ED3", paused: "\u6682\u505C" }).setValue(edited.serialization_status ?? "unknown").onChange((value) => set("serialization_status", value)));
     if (edited.last_updated_at) this.form.createEl("p", { text: `\u6765\u6E90\u6700\u8FD1\u66F4\u65B0\uFF1A${edited.last_updated_at}`, cls: "setting-item-description" });
     if (edited.word_count_text) this.form.createEl("p", { text: `\u6765\u6E90\u663E\u793A\u5B57\u6570\uFF1A${edited.word_count_text}`, cls: "setting-item-description" });
+    const matchArea = this.form.createDiv({ cls: "webnovel-matches" });
+    let selected;
+    let createSeparate = false;
+    let unresolved = false;
+    let matchError;
+    updateMatches = () => {
+      matchArea.empty();
+      selected = void 0;
+      createSeparate = false;
+      unresolved = false;
+      matchError = void 0;
+      if (this.target) return;
+      try {
+        const plan = this.plugin.importer.previewMatches(edited);
+        for (const warning of plan.warnings) matchArea.createEl("p", { text: warning });
+        if (plan.exact) {
+          matchArea.createEl("p", { text: `\u5DF2\u6709\u76F8\u540C\u6765\u6E90\uFF0C\u5C06\u66F4\u65B0\uFF1A${plan.exact.path}` });
+          return;
+        }
+        if (!plan.candidates.length) return;
+        unresolved = true;
+        matchArea.createEl("h3", { text: "\u53D1\u73B0\u53EF\u80FD\u5DF2\u5B58\u5728\u7684\u4F5C\u54C1" });
+        matchArea.createEl("p", { text: "\u4E66\u540D\u4E0E\u4F5C\u8005\u5339\u914D\uFF0C\u4EC5\u4F5C\u4E3A\u5019\u9009\u3002\u9009\u62E9\u5DF2\u6709\u7B14\u8BB0\u53EF\u8FFD\u52A0\u6765\u6E90\u5E76\u4FDD\u7559\u4E2A\u4EBA\u5185\u5BB9\uFF0C\u6216\u9009\u62E9\u72EC\u7ACB\u521B\u5EFA\u3002" });
+        new import_obsidian2.Setting(matchArea).setName("\u5BFC\u5165\u5230").addDropdown((dropdown) => {
+          dropdown.addOption("", "\u8BF7\u9009\u62E9\u5173\u8054\u76EE\u6807\u6216\u72EC\u7ACB\u521B\u5EFA");
+          dropdown.addOption("new", "\u72EC\u7ACB\u521B\u5EFA\u4F5C\u54C1");
+          plan.candidates.forEach((file, index) => dropdown.addOption(String(index), file.path));
+          dropdown.setValue("").onChange((value) => {
+            unresolved = !value;
+            createSeparate = value === "new";
+            selected = value && !createSeparate ? plan.candidates[Number(value)] : void 0;
+          });
+        });
+      } catch (error) {
+        matchError = errorText(error);
+        matchArea.createEl("p", { text: matchError, cls: "webnovel-error" });
+      }
+    };
+    updateMatches();
     new import_obsidian2.Setting(this.form).addButton((button) => button.setButtonText(this.target ? "\u4FDD\u5B58\u6765\u6E90\u5173\u8054" : "\u5BFC\u5165\u4F5C\u54C1").setCta().onClick(async () => {
       button.setDisabled(true);
       try {
         if (yearText && !/^[12]\d{3}$/.test(yearText)) throw new Error("\u5E74\u4EFD\u8BF7\u586B\u56DB\u4F4D\u6570\u5B57\uFF0C\u672A\u77E5\u65F6\u7559\u7A7A\u3002");
         set("first_published_year", yearText ? Number(yearText) : void 0);
         if (edited.cover_url && !/^https?:\/\//i.test(edited.cover_url)) throw new Error("\u5C01\u9762\u94FE\u63A5\u987B\u4E3A http \u6216 https \u5730\u5740\u3002");
+        if (matchError) throw new Error(matchError);
+        if (unresolved) throw new Error("\u8BF7\u5148\u9009\u62E9\u5173\u8054\u5DF2\u6709\u4F5C\u54C1\u6216\u72EC\u7ACB\u521B\u5EFA\u3002");
         this.status.setText("\u6B63\u5728\u4FDD\u5B58\u4F5C\u54C1\u8D44\u6599\u2026");
-        const result = await this.plugin.importer.import(edited, this.target);
+        const result = await this.plugin.importer.import(edited, this.target ?? selected, { createSeparate });
         this.initial?.onSaved?.();
         new import_obsidian2.Notice(`${result.created ? "\u5DF2\u521B\u5EFA" : "\u5DF2\u66F4\u65B0"}\uFF1A${result.file.basename}${result.warnings.length ? `
 ${result.warnings.join("\n")}` : ""}`, 8e3);
