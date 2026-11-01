@@ -1,7 +1,8 @@
+import { providerName } from './sources';
 import { ButtonComponent, Modal, Notice, Setting, TFile } from 'obsidian';
 import type WebnovelPlugin from './main';
 import { parseBookUrl, parseSourceHtml } from './sources';
-import { SourceMetadata, providerName, sourceKey } from './types';
+import { SourceMetadata, sourceKey } from './types';
 
 const errorText = (error: unknown): string => error instanceof Error ? error.message : String(error);
 

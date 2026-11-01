@@ -1,18 +1,15 @@
 import { encodeCapture } from './browser-capture';
-import { parseBookUrl, parseSourceHtml } from './sources';
+import { getSourceAdapter, parseBookUrl, parseSourceHtml } from './sources';
 
 /** Runs only when the user clicks the installed bookmark on an already displayed page. */
 export async function capture(vault: string): Promise<void> {
   try {
     const ref = parseBookUrl(location.href);
-    if (ref.provider !== 'qidian') throw new Error('请在起点作品详情页点击此书签。');
-    // Parse only the book header, synopsis and page metadata. Only the parser's
-    // selected metadata fields are copied; no full HTML or website script is sent.
-    const head = Array.from(document.querySelectorAll('meta[property^="og:"],meta[name^="og:"],link[rel="canonical"]'))
+    const adapter = getSourceAdapter(ref.provider);
+    if (!adapter.browserCapture) throw new Error('此来源暂不支持浏览器采集书签。');
+    const html = Array.from(document.querySelectorAll(adapter.browserCapture.selectors.join(',')))
       .map(element => element.outerHTML).join('\n');
-    const body = [document.querySelector('#book-detail'), document.querySelector('#book-intro-detail')]
-      .filter((element): element is Element => element !== null).map(element => element.outerHTML).join('\n');
-    const metadata = parseSourceHtml(`<html><head>${head}</head><body>${body}</body></html>`, ref, 'browser');
+    const metadata = parseSourceHtml(html, ref, 'browser');
     const payload = encodeCapture(metadata);
     try {
       await navigator.clipboard.writeText(payload);

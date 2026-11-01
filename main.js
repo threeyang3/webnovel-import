@@ -23,6 +23,259 @@ __export(main_exports, {
   default: () => WebnovelPlugin
 });
 module.exports = __toCommonJS(main_exports);
+
+// src/adapters/shared.ts
+var clean = (value) => value?.replace(/\u00a0/g, " ").replace(/[\t ]+/g, " ").trim() || void 0;
+function text(root, selector) {
+  return clean(root.querySelector(selector)?.textContent);
+}
+function textWithBreaks(root, selector) {
+  const element = root.querySelector(selector);
+  if (!element) return void 0;
+  const copy = element.cloneNode(true);
+  copy.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
+  copy.querySelectorAll("script, style").forEach((node) => node.remove());
+  return clean(copy.textContent?.replace(/\r\n?/g, "\n").replace(/[\t ]*\n[\t ]*/g, "\n"));
+}
+function meta(doc, key) {
+  return clean(doc.querySelector(`meta[property="${key}"], meta[name="${key}"]`)?.getAttribute("content"));
+}
+function imageUrl(value, base) {
+  if (!value?.trim()) return void 0;
+  try {
+    const url = new URL(value.trim(), base);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.href : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function status(value) {
+  if (!value) return void 0;
+  if (/完结|完本|已完成/.test(value)) return "completed";
+  if (/暂停|停更|断更/.test(value)) return "paused";
+  if (/连载/.test(value)) return "ongoing";
+  return void 0;
+}
+function pageIdentities(doc, ref, resolveUrl) {
+  const identities = [];
+  const addUrl = (value, evidence) => {
+    if (!value) return;
+    try {
+      identities.push({ book: resolveUrl(new URL(value, ref.url).href), evidence });
+    } catch {
+    }
+  };
+  addUrl(doc.querySelector('link[rel="canonical"]')?.getAttribute("href"), 'link[rel="canonical"]');
+  for (const key of ["og:url", "og:novel:book_url", "og:novel:read_url"]) addUrl(meta(doc, key), `meta ${key}`);
+  return { identities, addUrl };
+}
+function validateIdentities(identities, ref) {
+  if (!identities.length) {
+    throw new Error("\u672A\u8BC6\u522B\u5230\u53EF\u6838\u5BF9\u7684\u4F5C\u54C1\u6807\u8BC6\uFF0C\u4E0D\u80FD\u5C06\u9875\u9762\u8D44\u6599\u7ED1\u5B9A\u5230\u8F93\u5165\u94FE\u63A5\uFF1B\u8BF7\u63D0\u4F9B\u5B8C\u6574\u4F5C\u54C1\u8BE6\u60C5\u9875\u6216\u4F7F\u7528\u624B\u52A8\u5EFA\u6863\u3002");
+  }
+  for (const { book } of identities) {
+    if (book.provider !== ref.provider || book.id !== ref.id) {
+      throw new Error("\u9875\u9762\u6807\u8BC6\u4E0E\u8F93\u5165\u7684\u4F5C\u54C1\u94FE\u63A5\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u6838\u5BF9\u94FE\u63A5\u548C HTML \u6587\u4EF6\u3002");
+    }
+  }
+  return identities.map((identity) => identity.evidence).join("\uFF1B");
+}
+
+// src/adapters/qidian.ts
+var qidianAdapter = {
+  provider: "qidian",
+  name: "\u8D77\u70B9\u4E2D\u6587\u7F51",
+  recoveryHint: "\u8BF7\u6B63\u5E38\u6253\u5F00\u4F5C\u54C1\u9875\uFF0C\u4F7F\u7528\u8BBE\u7F6E\u4E2D\u7684\u6D4F\u89C8\u5668\u91C7\u96C6\u4E66\u7B7E\uFF0C\u6216\u9009\u62E9\u53E6\u5B58\u7684 HTML \u6587\u4EF6\u3002",
+  browserCapture: { selectors: ['meta[property^="og:"]', 'meta[name^="og:"]', 'link[rel="canonical"]', "#book-detail", "#book-intro-detail"] },
+  matchUrl(url) {
+    const pattern = url.hostname === "book.qidian.com" ? /^\/info\/(\d+)\/?$/ : ["www.qidian.com", "m.qidian.com"].includes(url.hostname) ? /^\/book\/(\d+)\/?$/ : void 0;
+    const id = pattern?.exec(url.pathname)?.[1];
+    return id ? { provider: "qidian", id, url: `https://www.qidian.com/book/${id}/` } : void 0;
+  },
+  identities(doc, ref, resolveUrl) {
+    const { identities } = pageIdentities(doc, ref, resolveUrl);
+    const id = doc.querySelector("#book-detail #bookImg")?.getAttribute("data-bid");
+    if (id && /^\d+$/.test(id)) {
+      identities.push({ book: { ...ref, id }, evidence: "#book-detail #bookImg[data-bid]" });
+    }
+    return identities;
+  },
+  parse(doc, ref) {
+    const result = { title: "", authors: [], evidence: {}, warnings: [] };
+    const header = doc.querySelector("#book-detail .book-info-top");
+    const visibleTitle = header ? text(header, "#bookName") : void 0;
+    const visibleAuthor = header ? clean(text(header, ".book-meta .author")?.replace(/^作者\s*[：:]\s*/, "")) : void 0;
+    result.title = visibleTitle || meta(doc, "og:novel:book_name") || "";
+    const author = visibleAuthor || meta(doc, "og:novel:author");
+    if (author) result.authors = [author];
+    const visibleDescription = textWithBreaks(doc, "#book-intro-detail");
+    result.description = visibleDescription || meta(doc, "og:novel:description") || meta(doc, "og:description");
+    const cover = doc.querySelector("#book-detail #bookImg");
+    const visibleCover = cover?.getAttribute("data-bid") === ref.id ? imageUrl(cover.querySelector("img")?.getAttribute("src"), ref.url) : void 0;
+    result.cover_url = visibleCover || imageUrl(meta(doc, "og:image"), ref.url);
+    const visibleTags = header ? Array.from(header.querySelectorAll(".book-attribute a")).map((link) => clean(link.textContent)).filter((tag) => Boolean(tag)) : [];
+    const category = meta(doc, "og:novel:category");
+    if (visibleTags.length) result.tags = [...new Set(visibleTags)];
+    else if (category) result.tags = [category];
+    const visibleStatus = header ? Array.from(header.querySelectorAll(".book-attribute span")).map((span) => status(clean(span.textContent))).find((value) => value !== void 0) : void 0;
+    result.serialization_status = visibleStatus || status(meta(doc, "og:novel:status"));
+    const wordLabel = header ? Array.from(header.querySelectorAll(".count cite")).find((label) => clean(label.textContent) === "\u5B57") : void 0;
+    const wordValue = wordLabel?.previousElementSibling;
+    const visibleWords = wordValue?.tagName.toLowerCase() === "em" && clean(wordValue.textContent) ? `${clean(wordValue.textContent)}\u5B57` : void 0;
+    result.word_count_text = visibleWords || meta(doc, "og:novel:word_count");
+    const visibleUpdated = header ? clean(text(header, ".book-meta .update-time")?.replace(/^更新时间\s*[：:]\s*/, "")) : void 0;
+    const visibleChapter = header ? clean(text(header, ".book-latest-chapter")?.replace(/^最新章节\s*[：:]\s*/, "")) : void 0;
+    result.last_updated_at = visibleUpdated || meta(doc, "og:novel:update_time");
+    result.latest_chapter = visibleChapter || meta(doc, "og:novel:latest_chapter_name");
+    result.evidence.title = visibleTitle ? "#book-detail .book-info-top #bookName" : "meta og:novel:book_name";
+    result.evidence.authors = visibleAuthor ? "#book-detail .book-info-top .book-meta .author" : "meta og:novel:author";
+    if (result.description) result.evidence.description = visibleDescription ? "#book-intro-detail\uFF1B\u4FDD\u7559br\u6362\u884C" : "meta og:novel:description / og:description";
+    if (result.cover_url) result.evidence.cover_url = visibleCover ? "#book-detail #bookImg[data-bid\u4E0E\u4F5C\u54C1ID\u4E00\u81F4] img[src]" : "meta og:image";
+    if (result.tags) result.evidence.tags = visibleTags.length ? "#book-detail .book-info-top .book-attribute a" : "meta og:novel:category";
+    if (result.serialization_status) result.evidence.serialization_status = visibleStatus ? "#book-detail .book-info-top .book-attribute span" : "meta og:novel:status";
+    if (result.word_count_text) result.evidence.word_count_text = visibleWords ? "#book-detail .book-info-top .count\uFF1B\u4EC5\u53D6\u5B57\u6570\uFF0C\u4FDD\u7559\u663E\u793A\u7CBE\u5EA6" : "meta og:novel:word_count";
+    if (result.last_updated_at) result.evidence.last_updated_at = visibleUpdated ? "#book-detail .book-info-top .update-time\uFF1B\u975E\u9996\u53D1\u65E5\u671F" : "meta og:novel:update_time\uFF1B\u975E\u9996\u53D1\u65E5\u671F";
+    if (result.latest_chapter) result.evidence.latest_chapter = visibleChapter ? "#book-detail .book-info-top .book-latest-chapter" : "meta og:novel:latest_chapter_name";
+    return result;
+  }
+};
+
+// src/adapters/fanqie.ts
+function fanqieCover(doc, ref, resolveUrl) {
+  for (const script of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+    let data;
+    try {
+      const parsed = JSON.parse(script.textContent || "");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      data = parsed;
+    } catch {
+      continue;
+    }
+    if (typeof data["@id"] !== "string") continue;
+    let identity;
+    try {
+      identity = resolveUrl(data["@id"]);
+    } catch {
+      continue;
+    }
+    if (identity.provider !== ref.provider || identity.id !== ref.id) continue;
+    const value = data.images ?? data.image;
+    const images = Array.isArray(value) ? value : [value];
+    for (const candidate of images) {
+      if (typeof candidate !== "string") continue;
+      const url2 = imageUrl(candidate, ref.url);
+      if (url2) return { url: url2, evidence: "\u4F5C\u54C1\u9875 JSON-LD images/image\uFF0C@id \u4E0E\u4F5C\u54C1\u94FE\u63A5\u4E00\u81F4" };
+    }
+  }
+  const url = imageUrl(doc.querySelector(".page-header-info .book-cover-img")?.getAttribute("src"), ref.url);
+  if (!url || new URL(url).pathname.includes("/novel-static/5cb03bd354145bc7815a5e09d4b15cfc")) return void 0;
+  return { url, evidence: "\u4F5C\u54C1\u9875 .page-header-info .book-cover-img[src]\uFF0C\u5DF2\u6392\u9664\u5DF2\u77E5\u52A0\u8F7D\u5360\u4F4D\u56FE" };
+}
+var fanqieAdapter = {
+  provider: "fanqie",
+  name: "\u756A\u8304\u5C0F\u8BF4",
+  recoveryHint: "\u53EF\u5728\u6D4F\u89C8\u5668\u6B63\u5E38\u6253\u5F00\u540E\u9009\u62E9\u53E6\u5B58\u7684 HTML \u6587\u4EF6\uFF0C\u6216\u624B\u52A8\u8865\u586B\u3002",
+  matchUrl(url) {
+    const id = url.hostname === "fanqienovel.com" ? /^\/page\/(\d+)\/?$/.exec(url.pathname)?.[1] : void 0;
+    return id ? { provider: "fanqie", id, url: `https://fanqienovel.com/page/${id}` } : void 0;
+  },
+  identities(doc, ref, resolveUrl) {
+    const { identities, addUrl } = pageIdentities(doc, ref, resolveUrl);
+    if (!identities.length) {
+      for (const script of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+        let data;
+        try {
+          data = JSON.parse(script.textContent || "");
+        } catch {
+          continue;
+        }
+        const roots = Array.isArray(data) ? data : [data];
+        for (const root of roots) {
+          if (root && typeof root === "object" && typeof root["@id"] === "string") {
+            addUrl(root["@id"], "\u4F5C\u54C1\u9875 JSON-LD \u9876\u5C42 @id");
+          }
+        }
+      }
+    }
+    return identities;
+  },
+  parse(doc, ref, resolveUrl) {
+    const result = { title: "", authors: [], evidence: {}, warnings: [] };
+    const header = doc.querySelector(".page-header-info");
+    result.title = header ? text(header, ".info-name h1") || "" : "";
+    const author = header && text(header, ".author-name-text");
+    if (author) result.authors = [author];
+    const cover = fanqieCover(doc, ref, resolveUrl);
+    if (cover) {
+      result.cover_url = cover.url;
+      result.evidence.cover_url = cover.evidence;
+    }
+    if (header) {
+      result.tags = Array.from(header.querySelectorAll(".info-label-grey")).map((el) => clean(el.textContent)).filter((tag) => Boolean(tag));
+      result.serialization_status = status(text(header, ".info-label-yellow"));
+      result.word_count_text = text(header, ".info-count-word")?.replace(/\s/g, "");
+      result.last_updated_at = text(header, ".info-last-time");
+      result.latest_chapter = text(header, ".info-last-title")?.replace(/^最近更新\s*[：:]\s*/, "");
+    }
+    result.description = text(doc, ".page-body .page-abstract-content");
+    result.evidence.title = "\u4F5C\u54C1\u9875 .page-header-info .info-name h1";
+    result.evidence.authors = "\u4F5C\u54C1\u9875 .page-header-info .author-name-text";
+    if (result.description) result.evidence.description = "\u4F5C\u54C1\u9875 .page-body .page-abstract-content";
+    if (result.tags?.length) result.evidence.tags = "\u4F5C\u54C1\u9875 .page-header-info .info-label-grey";
+    if (result.serialization_status) result.evidence.serialization_status = "\u4F5C\u54C1\u9875 .info-label-yellow";
+    if (result.word_count_text) result.evidence.word_count_text = "\u4F5C\u54C1\u9875 .info-count-word\uFF1B\u4FDD\u7559\u7F51\u7AD9\u663E\u793A\u7CBE\u5EA6";
+    if (result.last_updated_at) result.evidence.last_updated_at = "\u4F5C\u54C1\u9875 .info-last-time\uFF1B\u5E73\u53F0\u539F\u59CB\u663E\u793A\u65F6\u95F4\uFF0C\u975E\u9996\u53D1\u65E5\u671F";
+    if (result.latest_chapter) result.evidence.latest_chapter = "\u4F5C\u54C1\u9875 .info-last-title";
+    return result;
+  }
+};
+
+// src/sources.ts
+var sourceAdapters = [qidianAdapter, fanqieAdapter];
+function getSourceAdapter(provider) {
+  const adapter = sourceAdapters.find((adapter2) => adapter2.provider === provider);
+  if (!adapter) throw new Error(`\u4E0D\u652F\u6301\u7684\u4F5C\u54C1\u6765\u6E90\uFF1A${provider}`);
+  return adapter;
+}
+var providerName = (provider) => getSourceAdapter(provider).name;
+function parseBookUrl(input) {
+  let url;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    throw new Error("\u8BF7\u8F93\u5165\u5B8C\u6574\u7684\u4F5C\u54C1\u8BE6\u60C5\u9875\u94FE\u63A5\u3002");
+  }
+  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.port) {
+    throw new Error("\u4F5C\u54C1\u94FE\u63A5\u5FC5\u987B\u662F\u666E\u901A\u7684 HTTP \u6216 HTTPS \u5B98\u7F51\u94FE\u63A5\u3002");
+  }
+  for (const adapter of sourceAdapters) {
+    const ref = adapter.matchUrl(url);
+    if (ref) return ref;
+  }
+  throw new Error(`\u4EC5\u652F\u6301${sourceAdapters.map((a) => a.name).join("\u3001")}\u4F5C\u54C1\u8BE6\u60C5\u9875\uFF1B\u8BF7\u52FF\u4F7F\u7528\u7AE0\u8282\u6216\u641C\u7D22\u9875\u94FE\u63A5\u3002`);
+}
+function parseSourceHtml(html, ref, acquisition = "remote") {
+  const adapter = getSourceAdapter(ref.provider);
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const identity = validateIdentities(adapter.identities(doc, ref, parseBookUrl), ref);
+  const fields = adapter.parse(doc, ref, parseBookUrl);
+  const result = {
+    ...fields,
+    ...ref,
+    fetched_at: (/* @__PURE__ */ new Date()).toISOString(),
+    acquisition,
+    evidence: { identity, ...fields.evidence }
+  };
+  if (!result.title || result.authors.length === 0) {
+    throw new Error("\u672A\u8BC6\u522B\u5230\u53EF\u9760\u7684\u4E66\u540D\u548C\u4F5C\u8005\u3002\u9875\u9762\u53EF\u80FD\u662F\u9A8C\u8BC1\u9875\u3001\u767B\u5F55\u9875\u6216\u7ED3\u6784\u5DF2\u53D8\u5316\uFF1B\u8BF7\u5728\u6D4F\u89C8\u5668\u786E\u8BA4\u4F5C\u54C1\u8BE6\u60C5\u9875\uFF0C\u6216\u4F7F\u7528\u624B\u52A8\u5EFA\u6863\u3002");
+  }
+  if (!result.cover_url) result.warnings.push("\u672A\u63D0\u53D6\u5230\u53EF\u7528\u5C01\u9762\u5730\u5740\uFF0C\u53EF\u7A0D\u540E\u624B\u52A8\u8865\u5145\u3002");
+  if (!result.description) result.warnings.push("\u672A\u63D0\u53D6\u5230\u4F5C\u54C1\u7B80\u4ECB\uFF0C\u53EF\u7A0D\u540E\u624B\u52A8\u8865\u5145\u3002");
+  result.warnings.push("\u672A\u83B7\u5F97\u660E\u786E\u7684\u9996\u53D1\u65E5\u671F\uFF0C\u9996\u53D1\u5E74\u4EFD\u7559\u7A7A\uFF1B\u4E0D\u4F1A\u7528\u6700\u8FD1\u66F4\u65B0\u65F6\u95F4\u63A8\u65AD\u5E74\u4EFD\u3002");
+  return result;
+}
+
+// src/main.ts
 var import_obsidian3 = require("obsidian");
 
 // src/importer.ts
@@ -35,7 +288,6 @@ var DEFAULT_SETTINGS = {
   downloadCovers: true,
   summaryLength: 260
 };
-var providerName = (provider) => provider === "qidian" ? "\u8D77\u70B9\u4E2D\u6587\u7F51" : "\u756A\u8304\u5C0F\u8BF4";
 var sourceKey = (ref) => `${ref.provider}:${ref.id}`;
 
 // src/merge.ts
@@ -187,212 +439,6 @@ function upsertFrontmatter(current, incoming, options) {
   return { frontmatter, adopted, preserved };
 }
 
-// src/sources.ts
-function parseBookUrl(input) {
-  let url;
-  try {
-    url = new URL(input.trim());
-  } catch {
-    throw new Error("\u8BF7\u8F93\u5165\u5B8C\u6574\u7684\u8D77\u70B9\u6216\u756A\u8304\u4F5C\u54C1\u8BE6\u60C5\u9875\u94FE\u63A5\u3002");
-  }
-  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.port) {
-    throw new Error("\u4F5C\u54C1\u94FE\u63A5\u5FC5\u987B\u662F\u666E\u901A\u7684 HTTP \u6216 HTTPS \u5B98\u7F51\u94FE\u63A5\u3002");
-  }
-  const host = url.hostname.toLowerCase();
-  const pattern = host === "book.qidian.com" ? /^\/info\/(\d+)\/?$/ : ["www.qidian.com", "m.qidian.com"].includes(host) ? /^\/book\/(\d+)\/?$/ : host === "fanqienovel.com" ? /^\/page\/(\d+)\/?$/ : void 0;
-  const match = pattern?.exec(url.pathname);
-  if (!match) throw new Error("\u4EC5\u652F\u6301\u8D77\u70B9 /book/ \u6216 /info/\u3001\u756A\u8304 /page/ \u4F5C\u54C1\u8BE6\u60C5\u9875\uFF1B\u8BF7\u52FF\u4F7F\u7528\u7AE0\u8282\u6216\u641C\u7D22\u9875\u94FE\u63A5\u3002");
-  const id = match[1];
-  const provider = host === "fanqienovel.com" ? "fanqie" : "qidian";
-  return { provider, id, url: provider === "fanqie" ? `https://fanqienovel.com/page/${id}` : `https://www.qidian.com/book/${id}/` };
-}
-var clean = (value) => value?.replace(/\u00a0/g, " ").replace(/[\t ]+/g, " ").trim() || void 0;
-function text(root, selector) {
-  return clean(root.querySelector(selector)?.textContent);
-}
-function textWithBreaks(root, selector) {
-  const element = root.querySelector(selector);
-  if (!element) return void 0;
-  const copy = element.cloneNode(true);
-  copy.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
-  copy.querySelectorAll("script, style").forEach((node) => node.remove());
-  return clean(copy.textContent?.replace(/\r\n?/g, "\n").replace(/[\t ]*\n[\t ]*/g, "\n"));
-}
-function meta(doc, key) {
-  return clean(doc.querySelector(`meta[property="${key}"], meta[name="${key}"]`)?.getAttribute("content"));
-}
-function imageUrl(value, base) {
-  if (!value?.trim()) return void 0;
-  try {
-    const url = new URL(value.trim(), base);
-    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.href : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function status(value) {
-  if (!value) return void 0;
-  if (/完结|完本|已完成/.test(value)) return "completed";
-  if (/暂停|停更|断更/.test(value)) return "paused";
-  if (/连载/.test(value)) return "ongoing";
-  return void 0;
-}
-function fanqieCover(doc, ref) {
-  for (const script of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
-    let data;
-    try {
-      const parsed = JSON.parse(script.textContent || "");
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
-      data = parsed;
-    } catch {
-      continue;
-    }
-    if (typeof data["@id"] !== "string") continue;
-    let identity;
-    try {
-      identity = parseBookUrl(data["@id"]);
-    } catch {
-      continue;
-    }
-    if (identity.provider !== ref.provider || identity.id !== ref.id) continue;
-    const value = data.images ?? data.image;
-    const images = Array.isArray(value) ? value : [value];
-    for (const candidate of images) {
-      if (typeof candidate !== "string") continue;
-      const url2 = imageUrl(candidate, ref.url);
-      if (url2) return { url: url2, evidence: "\u4F5C\u54C1\u9875 JSON-LD images/image\uFF0C@id \u4E0E\u4F5C\u54C1\u94FE\u63A5\u4E00\u81F4" };
-    }
-  }
-  const url = imageUrl(doc.querySelector(".page-header-info .book-cover-img")?.getAttribute("src"), ref.url);
-  if (!url || new URL(url).pathname.includes("/novel-static/5cb03bd354145bc7815a5e09d4b15cfc")) return void 0;
-  return { url, evidence: "\u4F5C\u54C1\u9875 .page-header-info .book-cover-img[src]\uFF0C\u5DF2\u6392\u9664\u5DF2\u77E5\u52A0\u8F7D\u5360\u4F4D\u56FE" };
-}
-function checkIdentity(doc, ref) {
-  const identities = [];
-  const addUrl = (value, evidence) => {
-    if (!value) return;
-    try {
-      identities.push({ book: parseBookUrl(new URL(value, ref.url).href), evidence });
-    } catch {
-    }
-  };
-  addUrl(doc.querySelector('link[rel="canonical"]')?.getAttribute("href"), 'link[rel="canonical"]');
-  for (const key of ["og:url", "og:novel:book_url", "og:novel:read_url"]) addUrl(meta(doc, key), `meta ${key}`);
-  if (ref.provider === "qidian") {
-    const id = doc.querySelector("#book-detail #bookImg")?.getAttribute("data-bid");
-    if (id && /^\d+$/.test(id)) {
-      identities.push({ book: { ...ref, id }, evidence: "#book-detail #bookImg[data-bid]" });
-    }
-  }
-  if (!identities.length && ref.provider === "fanqie") {
-    for (const script of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
-      let data;
-      try {
-        data = JSON.parse(script.textContent || "");
-      } catch {
-        continue;
-      }
-      const roots = Array.isArray(data) ? data : [data];
-      for (const root of roots) {
-        if (root && typeof root === "object" && typeof root["@id"] === "string") {
-          addUrl(root["@id"], "\u4F5C\u54C1\u9875 JSON-LD \u9876\u5C42 @id");
-        }
-      }
-    }
-  }
-  if (!identities.length) {
-    throw new Error("\u672A\u8BC6\u522B\u5230\u53EF\u6838\u5BF9\u7684\u4F5C\u54C1\u6807\u8BC6\uFF0C\u4E0D\u80FD\u5C06\u9875\u9762\u8D44\u6599\u7ED1\u5B9A\u5230\u8F93\u5165\u94FE\u63A5\uFF1B\u8BF7\u63D0\u4F9B\u5B8C\u6574\u4F5C\u54C1\u8BE6\u60C5\u9875\u6216\u4F7F\u7528\u624B\u52A8\u5EFA\u6863\u3002");
-  }
-  for (const { book } of identities) {
-    if (book.provider !== ref.provider || book.id !== ref.id) {
-      throw new Error("\u9875\u9762\u6807\u8BC6\u4E0E\u8F93\u5165\u7684\u4F5C\u54C1\u94FE\u63A5\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u6838\u5BF9\u94FE\u63A5\u548C HTML \u6587\u4EF6\u3002");
-    }
-  }
-  return identities.map((identity) => identity.evidence).join("\uFF1B");
-}
-function parseSourceHtml(html, ref, acquisition = "remote") {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const identityEvidence = checkIdentity(doc, ref);
-  const result = {
-    ...ref,
-    title: "",
-    authors: [],
-    fetched_at: (/* @__PURE__ */ new Date()).toISOString(),
-    acquisition,
-    evidence: { identity: identityEvidence },
-    warnings: []
-  };
-  if (ref.provider === "fanqie") {
-    const header = doc.querySelector(".page-header-info");
-    result.title = header ? text(header, ".info-name h1") || "" : "";
-    const author = header && text(header, ".author-name-text");
-    if (author) result.authors = [author];
-    const cover = fanqieCover(doc, ref);
-    if (cover) {
-      result.cover_url = cover.url;
-      result.evidence.cover_url = cover.evidence;
-    }
-    if (header) {
-      result.tags = Array.from(header.querySelectorAll(".info-label-grey")).map((el) => clean(el.textContent)).filter((tag) => Boolean(tag));
-      result.serialization_status = status(text(header, ".info-label-yellow"));
-      result.word_count_text = text(header, ".info-count-word")?.replace(/\s/g, "");
-      result.last_updated_at = text(header, ".info-last-time");
-      result.latest_chapter = text(header, ".info-last-title")?.replace(/^最近更新\s*[：:]\s*/, "");
-    }
-    result.description = text(doc, ".page-body .page-abstract-content");
-    result.evidence.title = "\u4F5C\u54C1\u9875 .page-header-info .info-name h1";
-    result.evidence.authors = "\u4F5C\u54C1\u9875 .page-header-info .author-name-text";
-    if (result.description) result.evidence.description = "\u4F5C\u54C1\u9875 .page-body .page-abstract-content";
-    if (result.tags?.length) result.evidence.tags = "\u4F5C\u54C1\u9875 .page-header-info .info-label-grey";
-    if (result.serialization_status) result.evidence.serialization_status = "\u4F5C\u54C1\u9875 .info-label-yellow";
-    if (result.word_count_text) result.evidence.word_count_text = "\u4F5C\u54C1\u9875 .info-count-word\uFF1B\u4FDD\u7559\u7F51\u7AD9\u663E\u793A\u7CBE\u5EA6";
-    if (result.last_updated_at) result.evidence.last_updated_at = "\u4F5C\u54C1\u9875 .info-last-time\uFF1B\u5E73\u53F0\u539F\u59CB\u663E\u793A\u65F6\u95F4\uFF0C\u975E\u9996\u53D1\u65E5\u671F";
-    if (result.latest_chapter) result.evidence.latest_chapter = "\u4F5C\u54C1\u9875 .info-last-title";
-  } else {
-    const header = doc.querySelector("#book-detail .book-info-top");
-    const visibleTitle = header ? text(header, "#bookName") : void 0;
-    const visibleAuthor = header ? clean(text(header, ".book-meta .author")?.replace(/^作者\s*[：:]\s*/, "")) : void 0;
-    result.title = visibleTitle || meta(doc, "og:novel:book_name") || "";
-    const author = visibleAuthor || meta(doc, "og:novel:author");
-    if (author) result.authors = [author];
-    const visibleDescription = textWithBreaks(doc, "#book-intro-detail");
-    result.description = visibleDescription || meta(doc, "og:novel:description") || meta(doc, "og:description");
-    const cover = doc.querySelector("#book-detail #bookImg");
-    const visibleCover = cover?.getAttribute("data-bid") === ref.id ? imageUrl(cover.querySelector("img")?.getAttribute("src"), ref.url) : void 0;
-    result.cover_url = visibleCover || imageUrl(meta(doc, "og:image"), ref.url);
-    const visibleTags = header ? Array.from(header.querySelectorAll(".book-attribute a")).map((link) => clean(link.textContent)).filter((tag) => Boolean(tag)) : [];
-    const category = meta(doc, "og:novel:category");
-    if (visibleTags.length) result.tags = [...new Set(visibleTags)];
-    else if (category) result.tags = [category];
-    const visibleStatus = header ? Array.from(header.querySelectorAll(".book-attribute span")).map((span) => status(clean(span.textContent))).find((value) => value !== void 0) : void 0;
-    result.serialization_status = visibleStatus || status(meta(doc, "og:novel:status"));
-    const wordLabel = header ? Array.from(header.querySelectorAll(".count cite")).find((label) => clean(label.textContent) === "\u5B57") : void 0;
-    const wordValue = wordLabel?.previousElementSibling;
-    const visibleWords = wordValue?.tagName.toLowerCase() === "em" && clean(wordValue.textContent) ? `${clean(wordValue.textContent)}\u5B57` : void 0;
-    result.word_count_text = visibleWords || meta(doc, "og:novel:word_count");
-    const visibleUpdated = header ? clean(text(header, ".book-meta .update-time")?.replace(/^更新时间\s*[：:]\s*/, "")) : void 0;
-    const visibleChapter = header ? clean(text(header, ".book-latest-chapter")?.replace(/^最新章节\s*[：:]\s*/, "")) : void 0;
-    result.last_updated_at = visibleUpdated || meta(doc, "og:novel:update_time");
-    result.latest_chapter = visibleChapter || meta(doc, "og:novel:latest_chapter_name");
-    result.evidence.title = visibleTitle ? "#book-detail .book-info-top #bookName" : "meta og:novel:book_name";
-    result.evidence.authors = visibleAuthor ? "#book-detail .book-info-top .book-meta .author" : "meta og:novel:author";
-    if (result.description) result.evidence.description = visibleDescription ? "#book-intro-detail\uFF1B\u4FDD\u7559br\u6362\u884C" : "meta og:novel:description / og:description";
-    if (result.cover_url) result.evidence.cover_url = visibleCover ? "#book-detail #bookImg[data-bid\u4E0E\u4F5C\u54C1ID\u4E00\u81F4] img[src]" : "meta og:image";
-    if (result.tags) result.evidence.tags = visibleTags.length ? "#book-detail .book-info-top .book-attribute a" : "meta og:novel:category";
-    if (result.serialization_status) result.evidence.serialization_status = visibleStatus ? "#book-detail .book-info-top .book-attribute span" : "meta og:novel:status";
-    if (result.word_count_text) result.evidence.word_count_text = visibleWords ? "#book-detail .book-info-top .count\uFF1B\u4EC5\u53D6\u5B57\u6570\uFF0C\u4FDD\u7559\u663E\u793A\u7CBE\u5EA6" : "meta og:novel:word_count";
-    if (result.last_updated_at) result.evidence.last_updated_at = visibleUpdated ? "#book-detail .book-info-top .update-time\uFF1B\u975E\u9996\u53D1\u65E5\u671F" : "meta og:novel:update_time\uFF1B\u975E\u9996\u53D1\u65E5\u671F";
-    if (result.latest_chapter) result.evidence.latest_chapter = visibleChapter ? "#book-detail .book-info-top .book-latest-chapter" : "meta og:novel:latest_chapter_name";
-  }
-  if (!result.title || result.authors.length === 0) {
-    throw new Error("\u672A\u8BC6\u522B\u5230\u53EF\u9760\u7684\u4E66\u540D\u548C\u4F5C\u8005\u3002\u9875\u9762\u53EF\u80FD\u662F\u9A8C\u8BC1\u9875\u3001\u767B\u5F55\u9875\u6216\u7ED3\u6784\u5DF2\u53D8\u5316\uFF1B\u8BF7\u5728\u6D4F\u89C8\u5668\u786E\u8BA4\u4F5C\u54C1\u8BE6\u60C5\u9875\uFF0C\u6216\u4F7F\u7528\u624B\u52A8\u5EFA\u6863\u3002");
-  }
-  if (!result.cover_url) result.warnings.push("\u672A\u63D0\u53D6\u5230\u53EF\u7528\u5C01\u9762\u5730\u5740\uFF0C\u53EF\u7A0D\u540E\u624B\u52A8\u8865\u5145\u3002");
-  if (!result.description) result.warnings.push("\u672A\u63D0\u53D6\u5230\u4F5C\u54C1\u7B80\u4ECB\uFF0C\u53EF\u7A0D\u540E\u624B\u52A8\u8865\u5145\u3002");
-  result.warnings.push("\u672A\u83B7\u5F97\u660E\u786E\u7684\u9996\u53D1\u65E5\u671F\uFF0C\u9996\u53D1\u5E74\u4EFD\u7559\u7A7A\uFF1B\u4E0D\u4F1A\u7528\u6700\u8FD1\u66F4\u65B0\u65F6\u95F4\u63A8\u65AD\u5E74\u4EFD\u3002");
-  return result;
-}
-
 // src/importer.ts
 function folderPath(value) {
   const path = value.trim().replace(/\\/g, "/");
@@ -424,7 +470,7 @@ var Importer = class {
     const ref = parseBookUrl(input);
     const response = await (0, import_obsidian.requestUrl)({ url: ref.url, headers: { Accept: "text/html" }, throw: false });
     if (response.status !== 200) {
-      const recovery = ref.provider === "qidian" ? "\u8BF7\u6B63\u5E38\u6253\u5F00\u4F5C\u54C1\u9875\uFF0C\u4F7F\u7528\u8BBE\u7F6E\u4E2D\u7684\u6D4F\u89C8\u5668\u91C7\u96C6\u4E66\u7B7E\uFF0C\u6216\u9009\u62E9\u53E6\u5B58\u7684 HTML \u6587\u4EF6\u3002" : "\u53EF\u5728\u6D4F\u89C8\u5668\u6B63\u5E38\u6253\u5F00\u540E\u9009\u62E9\u53E6\u5B58\u7684 HTML \u6587\u4EF6\uFF0C\u6216\u624B\u52A8\u8865\u586B\u3002";
+      const recovery = getSourceAdapter(ref.provider).recoveryHint;
       throw new Error(`${providerName(ref.provider)}\u8FD4\u56DE HTTP ${response.status}\uFF0C\u672A\u83B7\u5F97\u53EF\u89E3\u6790\u7684\u4F5C\u54C1\u9875\u3002${recovery}`);
     }
     return parseSourceHtml(response.text, ref, "remote");
@@ -785,7 +831,7 @@ var BatchImportModal = class extends import_obsidian2.Modal {
 
 // src/browser-capture.ts
 function makeBookmarklet(vault) {
-  return `javascript:void(function(){${'"use strict";var WebnovelBrowser=(()=>{var v=Object.defineProperty;var B=Object.getOwnPropertyDescriptor;var L=Object.getOwnPropertyNames;var $=Object.prototype.hasOwnProperty;var U=(o,t)=>{for(var a in t)v(o,a,{get:t[a],enumerable:!0})},N=(o,t,a,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of L(t))!$.call(o,r)&&r!==a&&v(o,r,{get:()=>t[r],enumerable:!(i=B(t,r))||i.enumerable});return o};var O=o=>N(v({},"__esModule",{value:!0}),o);var P={};U(P,{capture:()=>z});function g(o){let t;try{t=new URL(o.trim())}catch{throw new Error("\\u8BF7\\u8F93\\u5165\\u5B8C\\u6574\\u7684\\u8D77\\u70B9\\u6216\\u756A\\u8304\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u94FE\\u63A5\\u3002")}if(!["https:","http:"].includes(t.protocol)||t.username||t.password||t.port)throw new Error("\\u4F5C\\u54C1\\u94FE\\u63A5\\u5FC5\\u987B\\u662F\\u666E\\u901A\\u7684 HTTP \\u6216 HTTPS \\u5B98\\u7F51\\u94FE\\u63A5\\u3002");let a=t.hostname.toLowerCase(),r=(a==="book.qidian.com"?/^\\/info\\/(\\d+)\\/?$/:["www.qidian.com","m.qidian.com"].includes(a)?/^\\/book\\/(\\d+)\\/?$/:a==="fanqienovel.com"?/^\\/page\\/(\\d+)\\/?$/:void 0)?.exec(t.pathname);if(!r)throw new Error("\\u4EC5\\u652F\\u6301\\u8D77\\u70B9 /book/ \\u6216 /info/\\u3001\\u756A\\u8304 /page/ \\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\uFF1B\\u8BF7\\u52FF\\u4F7F\\u7528\\u7AE0\\u8282\\u6216\\u641C\\u7D22\\u9875\\u94FE\\u63A5\\u3002");let e=r[1],n=a==="fanqienovel.com"?"fanqie":"qidian";return{provider:n,id:e,url:n==="fanqie"?`https://fanqienovel.com/page/${e}`:`https://www.qidian.com/book/${e}/`}}var d=o=>o?.replace(/\\u00a0/g," ").replace(/[\\t ]+/g," ").trim()||void 0;function l(o,t){return d(o.querySelector(t)?.textContent)}function T(o,t){let a=o.querySelector(t);if(!a)return;let i=a.cloneNode(!0);return i.querySelectorAll("br").forEach(r=>r.replaceWith(`\n`)),i.querySelectorAll("script, style").forEach(r=>r.remove()),d(i.textContent?.replace(/\\r\\n?/g,`\n`).replace(/[\\t ]*\\n[\\t ]*/g,`\n`))}function u(o,t){return d(o.querySelector(`meta[property="${t}"], meta[name="${t}"]`)?.getAttribute("content"))}function m(o,t){if(o?.trim())try{let a=new URL(o.trim(),t);return["http:","https:"].includes(a.protocol)&&!a.username&&!a.password?a.href:void 0}catch{return}}function y(o){if(o){if(/\u5B8C\u7ED3|\u5B8C\u672C|\u5DF2\u5B8C\u6210/.test(o))return"completed";if(/\u6682\u505C|\u505C\u66F4|\u65AD\u66F4/.test(o))return"paused";if(/\u8FDE\u8F7D/.test(o))return"ongoing"}}function D(o,t){for(let i of Array.from(o.querySelectorAll(\'script[type="application/ld+json"]\'))){let r;try{let c=JSON.parse(i.textContent||"");if(!c||typeof c!="object"||Array.isArray(c))continue;r=c}catch{continue}if(typeof r["@id"]!="string")continue;let e;try{e=g(r["@id"])}catch{continue}if(e.provider!==t.provider||e.id!==t.id)continue;let n=r.images??r.image,s=Array.isArray(n)?n:[n];for(let c of s){if(typeof c!="string")continue;let p=m(c,t.url);if(p)return{url:p,evidence:"\\u4F5C\\u54C1\\u9875 JSON-LD images/image\\uFF0C@id \\u4E0E\\u4F5C\\u54C1\\u94FE\\u63A5\\u4E00\\u81F4"}}}let a=m(o.querySelector(".page-header-info .book-cover-img")?.getAttribute("src"),t.url);if(!(!a||new URL(a).pathname.includes("/novel-static/5cb03bd354145bc7815a5e09d4b15cfc")))return{url:a,evidence:"\\u4F5C\\u54C1\\u9875 .page-header-info .book-cover-img[src]\\uFF0C\\u5DF2\\u6392\\u9664\\u5DF2\\u77E5\\u52A0\\u8F7D\\u5360\\u4F4D\\u56FE"}}function M(o,t){let a=[],i=(r,e)=>{if(r)try{a.push({book:g(new URL(r,t.url).href),evidence:e})}catch{}};i(o.querySelector(\'link[rel="canonical"]\')?.getAttribute("href"),\'link[rel="canonical"]\');for(let r of["og:url","og:novel:book_url","og:novel:read_url"])i(u(o,r),`meta ${r}`);if(t.provider==="qidian"){let r=o.querySelector("#book-detail #bookImg")?.getAttribute("data-bid");r&&/^\\d+$/.test(r)&&a.push({book:{...t,id:r},evidence:"#book-detail #bookImg[data-bid]"})}if(!a.length&&t.provider==="fanqie")for(let r of Array.from(o.querySelectorAll(\'script[type="application/ld+json"]\'))){let e;try{e=JSON.parse(r.textContent||"")}catch{continue}let n=Array.isArray(e)?e:[e];for(let s of n)s&&typeof s=="object"&&typeof s["@id"]=="string"&&i(s["@id"],"\\u4F5C\\u54C1\\u9875 JSON-LD \\u9876\\u5C42 @id")}if(!a.length)throw new Error("\\u672A\\u8BC6\\u522B\\u5230\\u53EF\\u6838\\u5BF9\\u7684\\u4F5C\\u54C1\\u6807\\u8BC6\\uFF0C\\u4E0D\\u80FD\\u5C06\\u9875\\u9762\\u8D44\\u6599\\u7ED1\\u5B9A\\u5230\\u8F93\\u5165\\u94FE\\u63A5\\uFF1B\\u8BF7\\u63D0\\u4F9B\\u5B8C\\u6574\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u6216\\u4F7F\\u7528\\u624B\\u52A8\\u5EFA\\u6863\\u3002");for(let{book:r}of a)if(r.provider!==t.provider||r.id!==t.id)throw new Error("\\u9875\\u9762\\u6807\\u8BC6\\u4E0E\\u8F93\\u5165\\u7684\\u4F5C\\u54C1\\u94FE\\u63A5\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u6838\\u5BF9\\u94FE\\u63A5\\u548C HTML \\u6587\\u4EF6\\u3002");return a.map(r=>r.evidence).join("\\uFF1B")}function R(o,t,a="remote"){let i=new DOMParser().parseFromString(o,"text/html"),r=M(i,t),e={...t,title:"",authors:[],fetched_at:new Date().toISOString(),acquisition:a,evidence:{identity:r},warnings:[]};if(t.provider==="fanqie"){let n=i.querySelector(".page-header-info");e.title=n&&l(n,".info-name h1")||"";let s=n&&l(n,".author-name-text");s&&(e.authors=[s]);let c=D(i,t);c&&(e.cover_url=c.url,e.evidence.cover_url=c.evidence),n&&(e.tags=Array.from(n.querySelectorAll(".info-label-grey")).map(p=>d(p.textContent)).filter(p=>!!p),e.serialization_status=y(l(n,".info-label-yellow")),e.word_count_text=l(n,".info-count-word")?.replace(/\\s/g,""),e.last_updated_at=l(n,".info-last-time"),e.latest_chapter=l(n,".info-last-title")?.replace(/^\u6700\u8FD1\u66F4\u65B0\\s*[\uFF1A:]\\s*/,"")),e.description=l(i,".page-body .page-abstract-content"),e.evidence.title="\\u4F5C\\u54C1\\u9875 .page-header-info .info-name h1",e.evidence.authors="\\u4F5C\\u54C1\\u9875 .page-header-info .author-name-text",e.description&&(e.evidence.description="\\u4F5C\\u54C1\\u9875 .page-body .page-abstract-content"),e.tags?.length&&(e.evidence.tags="\\u4F5C\\u54C1\\u9875 .page-header-info .info-label-grey"),e.serialization_status&&(e.evidence.serialization_status="\\u4F5C\\u54C1\\u9875 .info-label-yellow"),e.word_count_text&&(e.evidence.word_count_text="\\u4F5C\\u54C1\\u9875 .info-count-word\\uFF1B\\u4FDD\\u7559\\u7F51\\u7AD9\\u663E\\u793A\\u7CBE\\u5EA6"),e.last_updated_at&&(e.evidence.last_updated_at="\\u4F5C\\u54C1\\u9875 .info-last-time\\uFF1B\\u5E73\\u53F0\\u539F\\u59CB\\u663E\\u793A\\u65F6\\u95F4\\uFF0C\\u975E\\u9996\\u53D1\\u65E5\\u671F"),e.latest_chapter&&(e.evidence.latest_chapter="\\u4F5C\\u54C1\\u9875 .info-last-title")}else{let n=i.querySelector("#book-detail .book-info-top"),s=n?l(n,"#bookName"):void 0,c=n?d(l(n,".book-meta .author")?.replace(/^\u4F5C\u8005\\s*[\uFF1A:]\\s*/,"")):void 0;e.title=s||u(i,"og:novel:book_name")||"";let p=c||u(i,"og:novel:author");p&&(e.authors=[p]);let w=T(i,"#book-intro-detail");e.description=w||u(i,"og:novel:description")||u(i,"og:description");let _=i.querySelector("#book-detail #bookImg"),k=_?.getAttribute("data-bid")===t.id?m(_.querySelector("img")?.getAttribute("src"),t.url):void 0;e.cover_url=k||m(u(i,"og:image"),t.url);let h=n?Array.from(n.querySelectorAll(".book-attribute a")).map(f=>d(f.textContent)).filter(f=>!!f):[],S=u(i,"og:novel:category");h.length?e.tags=[...new Set(h)]:S&&(e.tags=[S]);let q=n?Array.from(n.querySelectorAll(".book-attribute span")).map(f=>y(d(f.textContent))).find(f=>f!==void 0):void 0;e.serialization_status=q||y(u(i,"og:novel:status"));let b=(n?Array.from(n.querySelectorAll(".count cite")).find(f=>d(f.textContent)==="\\u5B57"):void 0)?.previousElementSibling,A=b?.tagName.toLowerCase()==="em"&&d(b.textContent)?`${d(b.textContent)}\\u5B57`:void 0;e.word_count_text=A||u(i,"og:novel:word_count");let x=n?d(l(n,".book-meta .update-time")?.replace(/^\u66F4\u65B0\u65F6\u95F4\\s*[\uFF1A:]\\s*/,"")):void 0,E=n?d(l(n,".book-latest-chapter")?.replace(/^\u6700\u65B0\u7AE0\u8282\\s*[\uFF1A:]\\s*/,"")):void 0;e.last_updated_at=x||u(i,"og:novel:update_time"),e.latest_chapter=E||u(i,"og:novel:latest_chapter_name"),e.evidence.title=s?"#book-detail .book-info-top #bookName":"meta og:novel:book_name",e.evidence.authors=c?"#book-detail .book-info-top .book-meta .author":"meta og:novel:author",e.description&&(e.evidence.description=w?"#book-intro-detail\\uFF1B\\u4FDD\\u7559br\\u6362\\u884C":"meta og:novel:description / og:description"),e.cover_url&&(e.evidence.cover_url=k?"#book-detail #bookImg[data-bid\\u4E0E\\u4F5C\\u54C1ID\\u4E00\\u81F4] img[src]":"meta og:image"),e.tags&&(e.evidence.tags=h.length?"#book-detail .book-info-top .book-attribute a":"meta og:novel:category"),e.serialization_status&&(e.evidence.serialization_status=q?"#book-detail .book-info-top .book-attribute span":"meta og:novel:status"),e.word_count_text&&(e.evidence.word_count_text=A?"#book-detail .book-info-top .count\\uFF1B\\u4EC5\\u53D6\\u5B57\\u6570\\uFF0C\\u4FDD\\u7559\\u663E\\u793A\\u7CBE\\u5EA6":"meta og:novel:word_count"),e.last_updated_at&&(e.evidence.last_updated_at=x?"#book-detail .book-info-top .update-time\\uFF1B\\u975E\\u9996\\u53D1\\u65E5\\u671F":"meta og:novel:update_time\\uFF1B\\u975E\\u9996\\u53D1\\u65E5\\u671F"),e.latest_chapter&&(e.evidence.latest_chapter=E?"#book-detail .book-info-top .book-latest-chapter":"meta og:novel:latest_chapter_name")}if(!e.title||e.authors.length===0)throw new Error("\\u672A\\u8BC6\\u522B\\u5230\\u53EF\\u9760\\u7684\\u4E66\\u540D\\u548C\\u4F5C\\u8005\\u3002\\u9875\\u9762\\u53EF\\u80FD\\u662F\\u9A8C\\u8BC1\\u9875\\u3001\\u767B\\u5F55\\u9875\\u6216\\u7ED3\\u6784\\u5DF2\\u53D8\\u5316\\uFF1B\\u8BF7\\u5728\\u6D4F\\u89C8\\u5668\\u786E\\u8BA4\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\uFF0C\\u6216\\u4F7F\\u7528\\u624B\\u52A8\\u5EFA\\u6863\\u3002");return e.cover_url||e.warnings.push("\\u672A\\u63D0\\u53D6\\u5230\\u53EF\\u7528\\u5C01\\u9762\\u5730\\u5740\\uFF0C\\u53EF\\u7A0D\\u540E\\u624B\\u52A8\\u8865\\u5145\\u3002"),e.description||e.warnings.push("\\u672A\\u63D0\\u53D6\\u5230\\u4F5C\\u54C1\\u7B80\\u4ECB\\uFF0C\\u53EF\\u7A0D\\u540E\\u624B\\u52A8\\u8865\\u5145\\u3002"),e.warnings.push("\\u672A\\u83B7\\u5F97\\u660E\\u786E\\u7684\\u9996\\u53D1\\u65E5\\u671F\\uFF0C\\u9996\\u53D1\\u5E74\\u4EFD\\u7559\\u7A7A\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6700\\u8FD1\\u66F4\\u65B0\\u65F6\\u95F4\\u63A8\\u65AD\\u5E74\\u4EFD\\u3002"),e}function C(o){return JSON.stringify({format:"webnovel-import-capture",version:1,metadata:o})}async function z(o){try{let t=g(location.href);if(t.provider!=="qidian")throw new Error("\\u8BF7\\u5728\\u8D77\\u70B9\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u70B9\\u51FB\\u6B64\\u4E66\\u7B7E\\u3002");let a=Array.from(document.querySelectorAll(\'meta[property^="og:"],meta[name^="og:"],link[rel="canonical"]\')).map(s=>s.outerHTML).join(`\n`),i=[document.querySelector("#book-detail"),document.querySelector("#book-intro-detail")].filter(s=>s!==null).map(s=>s.outerHTML).join(`\n`),r=R(`<html><head>${a}</head><body>${i}</body></html>`,t,"browser"),e=C(r);try{await navigator.clipboard.writeText(e)}catch{if(window.prompt("\\u6D4F\\u89C8\\u5668\\u672A\\u5141\\u8BB8\\u76F4\\u63A5\\u590D\\u5236\\u3002\\u8BF7\\u590D\\u5236\\u4E0B\\u65B9\\u5B8C\\u6574\\u8D44\\u6599\\uFF0C\\u518D\\u6309\\u786E\\u5B9A\\u8FD4\\u56DE Obsidian\\uFF1B\\u53D6\\u6D88\\u5219\\u505C\\u6B62\\u3002",e)===null)return}let n=new URLSearchParams({vault:o,clipboard:"1",provider:t.provider,id:t.id});location.assign(`obsidian://webnovel-import?${n}`)}catch(t){window.alert(`\\u7F51\\u6587\\u8D44\\u6599\\u5C1A\\u672A\\u91C7\\u96C6\\uFF1A${t instanceof Error?t.message:String(t)}`)}}return O(P);})();\n'};WebnovelBrowser.capture(${JSON.stringify(vault)});})()`;
+  return `javascript:void(function(){${'"use strict";var WebnovelBrowser=(()=>{var _=Object.defineProperty;var $=Object.getOwnPropertyDescriptor;var N=Object.getOwnPropertyNames;var T=Object.prototype.hasOwnProperty;var I=(e,o)=>{for(var t in o)_(e,t,{get:o[t],enumerable:!0})},M=(e,o,t,r)=>{if(o&&typeof o=="object"||typeof o=="function")for(let n of N(o))!T.call(e,n)&&n!==t&&_(e,n,{get:()=>o[n],enumerable:!(r=$(o,n))||r.enumerable});return e};var O=e=>M(_({},"__esModule",{value:!0}),e);var H={};I(H,{capture:()=>z});var c=e=>e?.replace(/\\u00a0/g," ").replace(/[\\t ]+/g," ").trim()||void 0;function d(e,o){return c(e.querySelector(o)?.textContent)}function U(e,o){let t=e.querySelector(o);if(!t)return;let r=t.cloneNode(!0);return r.querySelectorAll("br").forEach(n=>n.replaceWith(`\n`)),r.querySelectorAll("script, style").forEach(n=>n.remove()),c(r.textContent?.replace(/\\r\\n?/g,`\n`).replace(/[\\t ]*\\n[\\t ]*/g,`\n`))}function l(e,o){return c(e.querySelector(`meta[property="${o}"], meta[name="${o}"]`)?.getAttribute("content"))}function g(e,o){if(e?.trim())try{let t=new URL(e.trim(),o);return["http:","https:"].includes(t.protocol)&&!t.username&&!t.password?t.href:void 0}catch{return}}function v(e){if(e){if(/\u5B8C\u7ED3|\u5B8C\u672C|\u5DF2\u5B8C\u6210/.test(e))return"completed";if(/\u6682\u505C|\u505C\u66F4|\u65AD\u66F4/.test(e))return"paused";if(/\u8FDE\u8F7D/.test(e))return"ongoing"}}function b(e,o,t){let r=[],n=(i,s)=>{if(i)try{r.push({book:t(new URL(i,o.url).href),evidence:s})}catch{}};n(e.querySelector(\'link[rel="canonical"]\')?.getAttribute("href"),\'link[rel="canonical"]\');for(let i of["og:url","og:novel:book_url","og:novel:read_url"])n(l(e,i),`meta ${i}`);return{identities:r,addUrl:n}}function B(e,o){if(!e.length)throw new Error("\\u672A\\u8BC6\\u522B\\u5230\\u53EF\\u6838\\u5BF9\\u7684\\u4F5C\\u54C1\\u6807\\u8BC6\\uFF0C\\u4E0D\\u80FD\\u5C06\\u9875\\u9762\\u8D44\\u6599\\u7ED1\\u5B9A\\u5230\\u8F93\\u5165\\u94FE\\u63A5\\uFF1B\\u8BF7\\u63D0\\u4F9B\\u5B8C\\u6574\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u6216\\u4F7F\\u7528\\u624B\\u52A8\\u5EFA\\u6863\\u3002");for(let{book:t}of e)if(t.provider!==o.provider||t.id!==o.id)throw new Error("\\u9875\\u9762\\u6807\\u8BC6\\u4E0E\\u8F93\\u5165\\u7684\\u4F5C\\u54C1\\u94FE\\u63A5\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u6838\\u5BF9\\u94FE\\u63A5\\u548C HTML \\u6587\\u4EF6\\u3002");return e.map(t=>t.evidence).join("\\uFF1B")}var C={provider:"qidian",name:"\\u8D77\\u70B9\\u4E2D\\u6587\\u7F51",recoveryHint:"\\u8BF7\\u6B63\\u5E38\\u6253\\u5F00\\u4F5C\\u54C1\\u9875\\uFF0C\\u4F7F\\u7528\\u8BBE\\u7F6E\\u4E2D\\u7684\\u6D4F\\u89C8\\u5668\\u91C7\\u96C6\\u4E66\\u7B7E\\uFF0C\\u6216\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\u3002",browserCapture:{selectors:[\'meta[property^="og:"]\',\'meta[name^="og:"]\',\'link[rel="canonical"]\',"#book-detail","#book-intro-detail"]},matchUrl(e){let t=(e.hostname==="book.qidian.com"?/^\\/info\\/(\\d+)\\/?$/:["www.qidian.com","m.qidian.com"].includes(e.hostname)?/^\\/book\\/(\\d+)\\/?$/:void 0)?.exec(e.pathname)?.[1];return t?{provider:"qidian",id:t,url:`https://www.qidian.com/book/${t}/`}:void 0},identities(e,o,t){let{identities:r}=b(e,o,t),n=e.querySelector("#book-detail #bookImg")?.getAttribute("data-bid");return n&&/^\\d+$/.test(n)&&r.push({book:{...o,id:n},evidence:"#book-detail #bookImg[data-bid]"}),r},parse(e,o){let t={title:"",authors:[],evidence:{},warnings:[]},r=e.querySelector("#book-detail .book-info-top"),n=r?d(r,"#bookName"):void 0,i=r?c(d(r,".book-meta .author")?.replace(/^\u4F5C\u8005\\s*[\uFF1A:]\\s*/,"")):void 0;t.title=n||l(e,"og:novel:book_name")||"";let s=i||l(e,"og:novel:author");s&&(t.authors=[s]);let a=U(e,"#book-intro-detail");t.description=a||l(e,"og:novel:description")||l(e,"og:description");let p=e.querySelector("#book-detail #bookImg"),u=p?.getAttribute("data-bid")===o.id?g(p.querySelector("img")?.getAttribute("src"),o.url):void 0;t.cover_url=u||g(l(e,"og:image"),o.url);let m=r?Array.from(r.querySelectorAll(".book-attribute a")).map(f=>c(f.textContent)).filter(f=>!!f):[],S=l(e,"og:novel:category");m.length?t.tags=[...new Set(m)]:S&&(t.tags=[S]);let x=r?Array.from(r.querySelectorAll(".book-attribute span")).map(f=>v(c(f.textContent))).find(f=>f!==void 0):void 0;t.serialization_status=x||v(l(e,"og:novel:status"));let w=(r?Array.from(r.querySelectorAll(".count cite")).find(f=>c(f.textContent)==="\\u5B57"):void 0)?.previousElementSibling,A=w?.tagName.toLowerCase()==="em"&&c(w.textContent)?`${c(w.textContent)}\\u5B57`:void 0;t.word_count_text=A||l(e,"og:novel:word_count");let R=r?c(d(r,".book-meta .update-time")?.replace(/^\u66F4\u65B0\u65F6\u95F4\\s*[\uFF1A:]\\s*/,"")):void 0,q=r?c(d(r,".book-latest-chapter")?.replace(/^\u6700\u65B0\u7AE0\u8282\\s*[\uFF1A:]\\s*/,"")):void 0;return t.last_updated_at=R||l(e,"og:novel:update_time"),t.latest_chapter=q||l(e,"og:novel:latest_chapter_name"),t.evidence.title=n?"#book-detail .book-info-top #bookName":"meta og:novel:book_name",t.evidence.authors=i?"#book-detail .book-info-top .book-meta .author":"meta og:novel:author",t.description&&(t.evidence.description=a?"#book-intro-detail\\uFF1B\\u4FDD\\u7559br\\u6362\\u884C":"meta og:novel:description / og:description"),t.cover_url&&(t.evidence.cover_url=u?"#book-detail #bookImg[data-bid\\u4E0E\\u4F5C\\u54C1ID\\u4E00\\u81F4] img[src]":"meta og:image"),t.tags&&(t.evidence.tags=m.length?"#book-detail .book-info-top .book-attribute a":"meta og:novel:category"),t.serialization_status&&(t.evidence.serialization_status=x?"#book-detail .book-info-top .book-attribute span":"meta og:novel:status"),t.word_count_text&&(t.evidence.word_count_text=A?"#book-detail .book-info-top .count\\uFF1B\\u4EC5\\u53D6\\u5B57\\u6570\\uFF0C\\u4FDD\\u7559\\u663E\\u793A\\u7CBE\\u5EA6":"meta og:novel:word_count"),t.last_updated_at&&(t.evidence.last_updated_at=R?"#book-detail .book-info-top .update-time\\uFF1B\\u975E\\u9996\\u53D1\\u65E5\\u671F":"meta og:novel:update_time\\uFF1B\\u975E\\u9996\\u53D1\\u65E5\\u671F"),t.latest_chapter&&(t.evidence.latest_chapter=q?"#book-detail .book-info-top .book-latest-chapter":"meta og:novel:latest_chapter_name"),t}};function P(e,o,t){for(let n of Array.from(e.querySelectorAll(\'script[type="application/ld+json"]\'))){let i;try{let u=JSON.parse(n.textContent||"");if(!u||typeof u!="object"||Array.isArray(u))continue;i=u}catch{continue}if(typeof i["@id"]!="string")continue;let s;try{s=t(i["@id"])}catch{continue}if(s.provider!==o.provider||s.id!==o.id)continue;let a=i.images??i.image,p=Array.isArray(a)?a:[a];for(let u of p){if(typeof u!="string")continue;let m=g(u,o.url);if(m)return{url:m,evidence:"\\u4F5C\\u54C1\\u9875 JSON-LD images/image\\uFF0C@id \\u4E0E\\u4F5C\\u54C1\\u94FE\\u63A5\\u4E00\\u81F4"}}}let r=g(e.querySelector(".page-header-info .book-cover-img")?.getAttribute("src"),o.url);if(!(!r||new URL(r).pathname.includes("/novel-static/5cb03bd354145bc7815a5e09d4b15cfc")))return{url:r,evidence:"\\u4F5C\\u54C1\\u9875 .page-header-info .book-cover-img[src]\\uFF0C\\u5DF2\\u6392\\u9664\\u5DF2\\u77E5\\u52A0\\u8F7D\\u5360\\u4F4D\\u56FE"}}var E={provider:"fanqie",name:"\\u756A\\u8304\\u5C0F\\u8BF4",recoveryHint:"\\u53EF\\u5728\\u6D4F\\u89C8\\u5668\\u6B63\\u5E38\\u6253\\u5F00\\u540E\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\uFF0C\\u6216\\u624B\\u52A8\\u8865\\u586B\\u3002",matchUrl(e){let o=e.hostname==="fanqienovel.com"?/^\\/page\\/(\\d+)\\/?$/.exec(e.pathname)?.[1]:void 0;return o?{provider:"fanqie",id:o,url:`https://fanqienovel.com/page/${o}`}:void 0},identities(e,o,t){let{identities:r,addUrl:n}=b(e,o,t);if(!r.length)for(let i of Array.from(e.querySelectorAll(\'script[type="application/ld+json"]\'))){let s;try{s=JSON.parse(i.textContent||"")}catch{continue}let a=Array.isArray(s)?s:[s];for(let p of a)p&&typeof p=="object"&&typeof p["@id"]=="string"&&n(p["@id"],"\\u4F5C\\u54C1\\u9875 JSON-LD \\u9876\\u5C42 @id")}return r},parse(e,o,t){let r={title:"",authors:[],evidence:{},warnings:[]},n=e.querySelector(".page-header-info");r.title=n&&d(n,".info-name h1")||"";let i=n&&d(n,".author-name-text");i&&(r.authors=[i]);let s=P(e,o,t);return s&&(r.cover_url=s.url,r.evidence.cover_url=s.evidence),n&&(r.tags=Array.from(n.querySelectorAll(".info-label-grey")).map(a=>c(a.textContent)).filter(a=>!!a),r.serialization_status=v(d(n,".info-label-yellow")),r.word_count_text=d(n,".info-count-word")?.replace(/\\s/g,""),r.last_updated_at=d(n,".info-last-time"),r.latest_chapter=d(n,".info-last-title")?.replace(/^\u6700\u8FD1\u66F4\u65B0\\s*[\uFF1A:]\\s*/,"")),r.description=d(e,".page-body .page-abstract-content"),r.evidence.title="\\u4F5C\\u54C1\\u9875 .page-header-info .info-name h1",r.evidence.authors="\\u4F5C\\u54C1\\u9875 .page-header-info .author-name-text",r.description&&(r.evidence.description="\\u4F5C\\u54C1\\u9875 .page-body .page-abstract-content"),r.tags?.length&&(r.evidence.tags="\\u4F5C\\u54C1\\u9875 .page-header-info .info-label-grey"),r.serialization_status&&(r.evidence.serialization_status="\\u4F5C\\u54C1\\u9875 .info-label-yellow"),r.word_count_text&&(r.evidence.word_count_text="\\u4F5C\\u54C1\\u9875 .info-count-word\\uFF1B\\u4FDD\\u7559\\u7F51\\u7AD9\\u663E\\u793A\\u7CBE\\u5EA6"),r.last_updated_at&&(r.evidence.last_updated_at="\\u4F5C\\u54C1\\u9875 .info-last-time\\uFF1B\\u5E73\\u53F0\\u539F\\u59CB\\u663E\\u793A\\u65F6\\u95F4\\uFF0C\\u975E\\u9996\\u53D1\\u65E5\\u671F"),r.latest_chapter&&(r.evidence.latest_chapter="\\u4F5C\\u54C1\\u9875 .info-last-title"),r}};var k=[C,E];function y(e){let o=k.find(t=>t.provider===e);if(!o)throw new Error(`\\u4E0D\\u652F\\u6301\\u7684\\u4F5C\\u54C1\\u6765\\u6E90\\uFF1A${e}`);return o}function h(e){let o;try{o=new URL(e.trim())}catch{throw new Error("\\u8BF7\\u8F93\\u5165\\u5B8C\\u6574\\u7684\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u94FE\\u63A5\\u3002")}if(!["https:","http:"].includes(o.protocol)||o.username||o.password||o.port)throw new Error("\\u4F5C\\u54C1\\u94FE\\u63A5\\u5FC5\\u987B\\u662F\\u666E\\u901A\\u7684 HTTP \\u6216 HTTPS \\u5B98\\u7F51\\u94FE\\u63A5\\u3002");for(let t of k){let r=t.matchUrl(o);if(r)return r}throw new Error(`\\u4EC5\\u652F\\u6301${k.map(t=>t.name).join("\\u3001")}\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\uFF1B\\u8BF7\\u52FF\\u4F7F\\u7528\\u7AE0\\u8282\\u6216\\u641C\\u7D22\\u9875\\u94FE\\u63A5\\u3002`)}function L(e,o,t="remote"){let r=y(o.provider),n=new DOMParser().parseFromString(e,"text/html"),i=B(r.identities(n,o,h),o),s=r.parse(n,o,h),a={...s,...o,fetched_at:new Date().toISOString(),acquisition:t,evidence:{identity:i,...s.evidence}};if(!a.title||a.authors.length===0)throw new Error("\\u672A\\u8BC6\\u522B\\u5230\\u53EF\\u9760\\u7684\\u4E66\\u540D\\u548C\\u4F5C\\u8005\\u3002\\u9875\\u9762\\u53EF\\u80FD\\u662F\\u9A8C\\u8BC1\\u9875\\u3001\\u767B\\u5F55\\u9875\\u6216\\u7ED3\\u6784\\u5DF2\\u53D8\\u5316\\uFF1B\\u8BF7\\u5728\\u6D4F\\u89C8\\u5668\\u786E\\u8BA4\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\uFF0C\\u6216\\u4F7F\\u7528\\u624B\\u52A8\\u5EFA\\u6863\\u3002");return a.cover_url||a.warnings.push("\\u672A\\u63D0\\u53D6\\u5230\\u53EF\\u7528\\u5C01\\u9762\\u5730\\u5740\\uFF0C\\u53EF\\u7A0D\\u540E\\u624B\\u52A8\\u8865\\u5145\\u3002"),a.description||a.warnings.push("\\u672A\\u63D0\\u53D6\\u5230\\u4F5C\\u54C1\\u7B80\\u4ECB\\uFF0C\\u53EF\\u7A0D\\u540E\\u624B\\u52A8\\u8865\\u5145\\u3002"),a.warnings.push("\\u672A\\u83B7\\u5F97\\u660E\\u786E\\u7684\\u9996\\u53D1\\u65E5\\u671F\\uFF0C\\u9996\\u53D1\\u5E74\\u4EFD\\u7559\\u7A7A\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6700\\u8FD1\\u66F4\\u65B0\\u65F6\\u95F4\\u63A8\\u65AD\\u5E74\\u4EFD\\u3002"),a}function D(e){return JSON.stringify({format:"webnovel-import-capture",version:1,metadata:e})}async function z(e){try{let o=h(location.href),t=y(o.provider);if(!t.browserCapture)throw new Error("\\u6B64\\u6765\\u6E90\\u6682\\u4E0D\\u652F\\u6301\\u6D4F\\u89C8\\u5668\\u91C7\\u96C6\\u4E66\\u7B7E\\u3002");let r=Array.from(document.querySelectorAll(t.browserCapture.selectors.join(","))).map(a=>a.outerHTML).join(`\n`),n=L(r,o,"browser"),i=D(n);try{await navigator.clipboard.writeText(i)}catch{if(window.prompt("\\u6D4F\\u89C8\\u5668\\u672A\\u5141\\u8BB8\\u76F4\\u63A5\\u590D\\u5236\\u3002\\u8BF7\\u590D\\u5236\\u4E0B\\u65B9\\u5B8C\\u6574\\u8D44\\u6599\\uFF0C\\u518D\\u6309\\u786E\\u5B9A\\u8FD4\\u56DE Obsidian\\uFF1B\\u53D6\\u6D88\\u5219\\u505C\\u6B62\\u3002",i)===null)return}let s=new URLSearchParams({vault:e,clipboard:"1",provider:o.provider,id:o.id});location.assign(`obsidian://webnovel-import?${s}`)}catch(o){window.alert(`\\u7F51\\u6587\\u8D44\\u6599\\u5C1A\\u672A\\u91C7\\u96C6\\uFF1A${o instanceof Error?o.message:String(o)}`)}}return O(H);})();\n'};WebnovelBrowser.capture(${JSON.stringify(vault)});})()`;
 }
 function parseCapturePayload(raw) {
   let packet;
@@ -799,7 +845,7 @@ function parseCapturePayload(raw) {
   }
   const value = packet.metadata;
   const ref = parseBookUrl(typeof value.url === "string" ? value.url : "");
-  if (ref.provider !== "qidian" || value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== "browser") {
+  if (!getSourceAdapter(ref.provider).browserCapture || value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== "browser") {
     throw new Error("\u91C7\u96C6\u8D44\u6599\u7684\u4F5C\u54C1\u6807\u8BC6\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u91CD\u65B0\u91C7\u96C6\u5BF9\u5E94\u7684\u8D77\u70B9\u8BE6\u60C5\u9875\u3002");
   }
   if (typeof value.title !== "string" || !value.title.trim() || !Array.isArray(value.authors) || !value.authors.length || !value.authors.every((s) => typeof s === "string" && s.trim())) {
@@ -835,7 +881,7 @@ function parseCapturePayload(raw) {
     const evidence = value.evidence?.[key];
     if (typeof evidence === "string") result.evidence[key] = evidence;
   }
-  result.evidence.acquisition = "\u7528\u6237\u5728\u6B63\u5E38\u663E\u793A\u7684\u8D77\u70B9\u4F5C\u54C1\u9875\u70B9\u51FB\u91C7\u96C6\u4E66\u7B7E\uFF0C\u7ECF\u672C\u673A\u526A\u8D34\u677F\u5BFC\u5165";
+  result.evidence.acquisition = "\u7528\u6237\u5728\u6B63\u5E38\u663E\u793A\u7684\u4F5C\u54C1\u9875\u70B9\u51FB\u91C7\u96C6\u4E66\u7B7E\uFF0C\u7ECF\u672C\u673A\u526A\u8D34\u677F\u5BFC\u5165";
   result.warnings = [
     "\u6D4F\u89C8\u5668\u9875\u9762\u91C7\u96C6\uFF1B\u4E0D\u4EE3\u8868\u666E\u901A HTTP \u81EA\u52A8\u5237\u65B0\u5DF2\u53EF\u7528\u3002",
     "\u672A\u83B7\u5F97\u660E\u786E\u7684\u4F5C\u54C1\u9996\u53D1\u65E5\u671F\uFF0C\u9996\u53D1\u5E74\u4EFD\u7559\u7A7A\uFF1B\u4E0D\u4F1A\u7528\u6700\u8FD1\u66F4\u65B0\u65F6\u95F4\u6216\u7AE0\u8282\u65E5\u671F\u63A8\u65AD\u5E74\u4EFD\u3002"

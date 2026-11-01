@@ -1,6 +1,7 @@
+import { providerName } from './sources';
 import { Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
 import { Importer, folderPath } from './importer';
-import { DEFAULT_SETTINGS, ImportSettings, providerName } from './types';
+import { DEFAULT_SETTINGS, ImportSettings } from './types';
 import { BatchImportModal, SingleImportModal } from './ui';
 import { makeBookmarklet, parseCapturePayload } from './browser-capture';
 import { parseBookUrl } from './sources';
