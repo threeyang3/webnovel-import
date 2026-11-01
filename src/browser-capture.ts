@@ -1,4 +1,4 @@
-import { parseBookUrl } from './sources';
+import { getSourceAdapter, parseBookUrl } from './sources';
 import type { SourceMetadata } from './types';
 
 declare const __BROWSER_CAPTURE_CODE__: string;
@@ -22,7 +22,7 @@ export function parseCapturePayload(raw: string): SourceMetadata {
   }
   const value = packet.metadata;
   const ref = parseBookUrl(typeof value.url === 'string' ? value.url : '');
-  if (ref.provider !== 'qidian' || value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== 'browser') {
+  if (!getSourceAdapter(ref.provider).browserCapture || value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== 'browser') {
     throw new Error('采集资料的作品标识不一致，请重新采集对应的起点详情页。');
   }
   if (typeof value.title !== 'string' || !value.title.trim() || !Array.isArray(value.authors)
@@ -54,7 +54,7 @@ export function parseCapturePayload(raw: string): SourceMetadata {
     const evidence = value.evidence?.[key];
     if (typeof evidence === 'string') result.evidence[key] = evidence;
   }
-  result.evidence.acquisition = '用户在正常显示的起点作品页点击采集书签，经本机剪贴板导入';
+  result.evidence.acquisition = '用户在正常显示的作品页点击采集书签，经本机剪贴板导入';
   result.warnings = ['浏览器页面采集；不代表普通 HTTP 自动刷新已可用。',
     '未获得明确的作品首发日期，首发年份留空；不会用最近更新时间或章节日期推断年份。'];
   if (!result.cover_url) result.warnings.push('未提取到可用封面地址，可稍后手动补充。');

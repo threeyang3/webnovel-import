@@ -1,4 +1,5 @@
-export type Provider = 'qidian' | 'fanqie';
+import type { Provider } from './sources';
+export type { Provider } from './sources';
 
 export interface BookRef {
   provider: Provider;
@@ -40,5 +41,4 @@ export const DEFAULT_SETTINGS: ImportSettings = {
   summaryLength: 260,
 };
 
-export const providerName = (provider: Provider): string => provider === 'qidian' ? '起点中文网' : '番茄小说';
 export const sourceKey = (ref: BookRef): string => `${ref.provider}:${ref.id}`;

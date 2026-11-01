@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DOMParser as TestDOMParser } from 'linkedom';
-import { parseBookUrl, parseSourceHtml } from '../src/sources';
+import { getSourceAdapter, parseBookUrl, parseSourceHtml } from '../src/sources';
 
 Object.defineProperty(globalThis, 'DOMParser', { value: TestDOMParser, configurable: true });
 
@@ -143,4 +143,38 @@ test('rejects missing or conflicting current-book identity, challenge pages and 
   assert.throws(() => parseSourceHtml(recommendationOnly, qidianRef, 'html'), /作品标识/);
   assert.throws(() => parseSourceHtml('<html><head><script src="/C2WF946J0/probe.js"></script></head><body></body></html>', qidianRef), /未识别/);
   assert.throws(() => parseSourceHtml('<title>安全验证</title><h1>欢迎访问</h1><meta name="author" content="网站">', qidianRef), /未识别/);
+});
+
+
+test('registry rejects unknown sources and cross-platform identities instead of falling back to Qidian', () => {
+  assert.throws(() => getSourceAdapter('unsupported'), /不支持/);
+  const conflicting = qidianVisible.replace('<head>', '<head><link rel="canonical" href="https://fanqienovel.com/page/1010868264">');
+  assert.throws(() => parseSourceHtml(conflicting, qidianRef), /不一致/);
+  assert.equal(getSourceAdapter('fanqie').browserCapture, undefined);
+});
+
+test('built bookmarklet uses adapter selectors and produces a valid capture with canonical identity', async () => {
+  const { build } = await import('esbuild');
+  const { parseHTML } = await import('linkedom');
+  const { createContext, runInContext } = await import('node:vm');
+  const { parseCapturePayload } = await import('../src/browser-capture');
+  const bundle = await build({ entryPoints: ['src/bookmarklet.ts'], bundle: true,
+    format: 'iife', globalName: 'WebnovelBrowser', write: false });
+  let payload = '';
+  let uri = '';
+  const context = createContext({
+    document: parseHTML(qidianVisible).document, DOMParser: TestDOMParser, URL, URLSearchParams,
+    location: { href: 'https://m.qidian.com/book/1010868264', assign: (value: string) => { uri = value; } },
+    navigator: { clipboard: { writeText: async (value: string) => { payload = value; } } },
+    window: { alert: (message: string) => { throw new Error(message); } },
+  });
+  runInContext(bundle.outputFiles[0].text, context);
+  await runInContext('WebnovelBrowser.capture("Sandbox")', context);
+  const result = parseCapturePayload(payload);
+  assert.equal(result.title, '页面书名');
+  assert.equal(result.cover_url, 'https://bookcover.yuewen.com/qdbimg/349573/1010868264/600.webp');
+  assert.equal(result.description, '测试简介第一段。\n第二段提到2020年。\n第三段。');
+  assert.equal(result.url, qidianRef.url);
+  assert.equal(new URL(uri).searchParams.get('vault'), 'Sandbox');
+  assert.equal(new URL(uri).searchParams.get('id'), qidianRef.id);
 });

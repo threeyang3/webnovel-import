@@ -33,3 +33,9 @@ test('browser capture rejects unrelated clipboard content, incompatible versions
   assert.throws(() => parseCapturePayload(encodeCapture({ ...metadata, id: '1048862481' })), /标识不一致/);
   assert.throws(() => parseCapturePayload(encodeCapture({ ...metadata, cover_url: 'javascript:alert(1)' })), /封面地址无效/);
 });
+
+
+test('clipboard receiver rejects a platform without browser-capture support', () => {
+  assert.throws(() => parseCapturePayload(encodeCapture({ ...metadata, provider: 'fanqie',
+    id: '7143038691944959011', url: 'https://fanqienovel.com/page/7143038691944959011' })), /标识不一致/);
+});
