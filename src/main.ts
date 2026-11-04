@@ -2,7 +2,8 @@ import { providerName } from './sources';
 import { Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
 import { Importer, folderPath } from './importer';
 import { DEFAULT_SETTINGS, ImportSettings } from './types';
-import { BatchImportModal, SingleImportModal } from './ui';
+import { ArchiveExportModal, BatchImportModal, SingleImportModal } from './ui';
+import { isCoreManaged } from './merge';
 import { makeBookmarklet, parseCapturePayload } from './browser-capture';
 import { parseBookUrl } from './sources';
 import { sourceKey } from './types';
@@ -35,8 +36,19 @@ export default class WebnovelPlugin extends Plugin {
       id: 'refresh-current', name: '刷新当前网文的来源资料',
       checkCallback: checking => {
         const file = this.activeMarkdown();
-        if (!file || !this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import) return false;
+        if (!file) return false;
+        const state = this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import;
+        if (!state || isCoreManaged(state)) return false;
         if (!checking) void this.refresh(file);
+        return true;
+      },
+    });
+    this.addCommand({
+      id: 'export-current-to-media-core', name: '导出当前网文来源给 Media Core',
+      checkCallback: checking => {
+        const file = this.activeMarkdown();
+        if (!file || this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import?.schema_version !== 1) return false;
+        if (!checking) new ArchiveExportModal(this, file).open();
         return true;
       },
     });

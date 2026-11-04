@@ -1,0 +1,19 @@
+{
+  "protocol": "media-source/v2",
+  "provider": "example-provider",
+  "id": "work-0001",
+  "url": "https://example.invalid/works/work-0001",
+  "scope": "work",
+  "observation": {"acquired_at": "2026-11-04T04:00:00.000Z", "method": "remote"},
+  "fields": {
+    "title": "虚构作品",
+    "authors": ["示例作者"],
+    "summary": "此前取得、此次未重新取得的简介。"
+  },
+  "field_evidence": {
+    "/fields/title": {"state": "observed", "basis": "source-observation", "observed_at": "2026-11-04T04:00:00.000Z"},
+    "/fields/authors": {"state": "observed", "basis": "source-observation", "observed_at": "2026-11-04T04:00:00.000Z"},
+    "/fields/summary": {"state": "retained", "basis": "source-observation", "observed_at": "2026-11-01T04:00:00.000Z"}
+  },
+  "mock": true
+}

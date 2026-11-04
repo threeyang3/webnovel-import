@@ -3,7 +3,14 @@ import { ButtonComponent, Modal, Notice, Setting, TFile } from 'obsidian';
 import type WebnovelPlugin from './main';
 import { parseBookUrl, parseSourceHtml } from './sources';
 import { SourceMetadata, sourceKey } from './types';
+import { toMediaCoreSource } from './media-core-export';
+import { isCoreManaged } from './merge';
 
+async function copyMediaCoreSource(metadata: SourceMetadata, archive = false): Promise<void> {
+  await navigator.clipboard.writeText(JSON.stringify(toMediaCoreSource(metadata, { archive }), null, 2));
+}
+
+const copiedMessage = '已复制作品资料。请在 Media Core 的“导入来源资料”入口粘贴并预览。';
 const errorText = (error: unknown): string => error instanceof Error ? error.message : String(error);
 
 export class SingleImportModal extends Modal {
@@ -136,11 +143,30 @@ export class SingleImportModal extends Modal {
       text.inputEl.rows = 5;
     });
     new Setting(this.form).setName('封面链接').addText(text => text.setValue(edited.cover_url ?? '').onChange(value => set('cover_url', value.trim() || undefined)));
-    let yearText = edited.first_published_year?.toString() ?? '';
+    let yearText = edited.first_published_year?.toString().padStart(4, '0') ?? '';
     new Setting(this.form).setName('网文首发年份').setDesc('未知时留空；不以最近更新或纸书出版年份代替。').addText(text => text.setValue(yearText).setPlaceholder('未知').onChange(value => { yearText = value.trim(); }));
     new Setting(this.form).setName('连载状态').addDropdown(dropdown => dropdown.addOptions({ unknown: '未知', ongoing: '连载中', completed: '已完结', paused: '暂停' }).setValue(edited.serialization_status ?? 'unknown').onChange(value => set('serialization_status', value)));
     if (edited.last_updated_at) this.form.createEl('p', { text: `来源最近更新：${edited.last_updated_at}`, cls: 'setting-item-description' });
     if (edited.word_count_text) this.form.createEl('p', { text: `来源显示字数：${edited.word_count_text}`, cls: 'setting-item-description' });
+    const readForm = () => {
+      if (yearText && (!/^\d{4}$/.test(yearText) || Number(yearText) === 0)) throw new Error('年份请填四位数字，未知时留空。');
+      set('first_published_year', yearText ? Number(yearText) : undefined);
+      if (edited.cover_url && !/^https?:\/\//i.test(edited.cover_url)) throw new Error('封面链接须为 http 或 https 地址。');
+      if (!edited.title.trim()) throw new Error('请填写作品标题。');
+    };
+    const exports = new Setting(this.form).setName('交给 Media Core')
+      .setDesc('复制这次预览的来源资料，在 Media Core 中核对并收录。');
+    exports.addButton(button => button.setButtonText('复制给 Media Core').onClick(async () => {
+      try {
+        readForm();
+        await copyMediaCoreSource(edited);
+        this.status.setText(copiedMessage);
+      } catch (error) { this.status.setText(errorText(error)); }
+    }));
+    if (this.target && isCoreManaged(this.app.metadataCache.getFileCache(this.target)?.frontmatter?.webnovel_import)) {
+      this.form.createEl('p', { text: '此作品由 Media Core 托管。请复制资料后在 Media Core 中更新。' });
+      return;
+    }
     const matchArea = this.form.createDiv({ cls: 'webnovel-matches' });
     let selected: TFile | undefined;
     let createSeparate = false;
@@ -176,9 +202,7 @@ export class SingleImportModal extends Modal {
     new Setting(this.form).addButton(button => button.setButtonText(this.target ? '保存来源关联' : '导入作品').setCta().onClick(async () => {
       button.setDisabled(true);
       try {
-        if (yearText && !/^[12]\d{3}$/.test(yearText)) throw new Error('年份请填四位数字，未知时留空。');
-        set('first_published_year', yearText ? Number(yearText) : undefined);
-        if (edited.cover_url && !/^https?:\/\//i.test(edited.cover_url)) throw new Error('封面链接须为 http 或 https 地址。');
+        readForm();
         if (matchError) throw new Error(matchError);
         if (unresolved) throw new Error('请先选择关联已有作品或独立创建。');
         this.status.setText('正在保存作品资料…');
@@ -193,6 +217,34 @@ export class SingleImportModal extends Modal {
   }
 
   onClose(): void { this.generation++; this.contentEl.empty(); }
+}
+
+export class ArchiveExportModal extends Modal {
+  constructor(private plugin: WebnovelPlugin, private file: TFile) { super(plugin.app); }
+
+  onOpen(): void {
+    this.contentEl.createEl('h2', { text: '导出当前网文来源给 Media Core' });
+    this.contentEl.createEl('p', { text: '选择已保存的来源。可靠的原观察时间会沿用，无法核对时间的资料供预览确认。' });
+    const status = this.contentEl.createEl('p', { attr: { role: 'status' } });
+    let sources: SourceMetadata[];
+    try { sources = this.plugin.importer.sources(this.file); }
+    catch (error) { status.setText(errorText(error)); return; }
+    if (!sources.length) { status.setText('当前笔记没有可导出的网文来源。'); return; }
+    let selected = 0;
+    const actions = new Setting(this.contentEl).setName('来源');
+    actions.addDropdown(dropdown => {
+      sources.forEach((source, index) => dropdown.addOption(String(index), `${source.provider} · ${source.id}`));
+      dropdown.setValue('0').onChange(value => { selected = Number(value); });
+    });
+    actions.addButton(button => button.setButtonText('复制给 Media Core').setCta().onClick(async () => {
+      try {
+        await copyMediaCoreSource(sources[selected], true);
+        status.setText(copiedMessage);
+      } catch (error) { status.setText(errorText(error)); }
+    }));
+  }
+
+  onClose(): void { this.contentEl.empty(); }
 }
 
 export class BatchImportModal extends Modal {

@@ -7,6 +7,8 @@ export interface BookRef {
   url: string;
 }
 
+export type Acquisition = 'remote' | 'html' | 'browser' | 'manual';
+
 export interface SourceMetadata extends BookRef {
   title: string;
   authors: string[];
@@ -22,7 +24,9 @@ export interface SourceMetadata extends BookRef {
   fetched_at: string;
   /** Source fields retained from older responses, mapped to their last observed time. */
   retained_fields?: Record<string, string>;
-  acquisition: 'remote' | 'html' | 'browser' | 'manual';
+  /** Provenance known for values retained by this writer; absent on older files. */
+  retained_field_acquisitions?: Record<string, Acquisition>;
+  acquisition: Acquisition;
   evidence: Record<string, string>;
   warnings: string[];
 }

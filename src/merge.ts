@@ -14,6 +14,10 @@ interface ImportState extends Record<string, unknown> {
   adopted: Record<string, Adoption>;
 }
 
+export function isCoreManaged(state: unknown): boolean {
+  return isRecord(state) && state.schema_version === 2 && state.managed_by === 'media-core';
+}
+
 const metadataFields = [
   'title', 'authors', 'description', 'cover_url', 'tags', 'serialization_status',
   'word_count_text', 'first_published_at', 'first_published_year', 'last_updated_at', 'latest_chapter',
@@ -26,6 +30,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function readState(frontmatter: Record<string, unknown>): ImportState {
   const state = frontmatter.webnovel_import;
   if (state === undefined) return { schema_version: 1, sources: [], adopted: {} };
+  if (isCoreManaged(state)) throw new Error('此作品的来源由 Media Core 托管，请把采集结果导出到 Media Core。');
   if (!isRecord(state) || state.schema_version !== 1) {
     throw new Error('无法更新：webnovel_import.schema_version 必须为 1；现有插件数据未被覆盖。');
   }
@@ -87,6 +92,7 @@ function mergeSnapshot(previous: SourceMetadata | undefined, incoming: SourceMet
     warnings: [...incoming.warnings],
   };
   const retainedFields = { ...previous?.retained_fields };
+  const retainedAcquisitions = { ...previous?.retained_field_acquisitions };
   if (incoming.tags) snapshot.tags = [...incoming.tags];
   if (incoming.serialization_status === 'unknown' && !isManualField(incoming, 'serialization_status')) {
     delete snapshot.serialization_status;
@@ -96,10 +102,17 @@ function mergeSnapshot(previous: SourceMetadata | undefined, incoming: SourceMet
       // Preserve the last known value without presenting it as observed this time.
       (snapshot as unknown as Record<string, unknown>)[field] = previous[field];
       retainedFields[field] = previous.retained_fields?.[field] ?? previous.fetched_at;
+      let acquisition = previous.retained_field_acquisitions?.[field];
+      if (previous.retained_fields?.[field] === undefined) {
+        acquisition = previous.acquisition === 'manual' || !isManualField(previous, field) ? previous.acquisition : undefined;
+      }
+      if (acquisition) retainedAcquisitions[field] = acquisition;
+      else delete retainedAcquisitions[field];
       if (previous.evidence[field] !== undefined) snapshot.evidence[field] = previous.evidence[field];
       else if (previous.acquisition === 'manual') snapshot.evidence[field] = 'manual:用户手工录入';
     } else {
       delete retainedFields[field];
+      delete retainedAcquisitions[field];
       if (!isMissingSourceField(incoming, field) && incoming.evidence[field] === undefined) {
         // Old manual evidence must not be attached to a newly fetched value.
         delete snapshot.evidence[field];
@@ -108,6 +121,8 @@ function mergeSnapshot(previous: SourceMetadata | undefined, incoming: SourceMet
   }
   if (Object.keys(retainedFields).length) snapshot.retained_fields = retainedFields;
   else delete snapshot.retained_fields;
+  if (Object.keys(retainedAcquisitions).length) snapshot.retained_field_acquisitions = retainedAcquisitions;
+  else delete snapshot.retained_field_acquisitions;
   return snapshot;
 }
 

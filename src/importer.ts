@@ -1,7 +1,7 @@
 import { matchesWork } from './matching';
 import { providerName, getSourceAdapter } from './sources';
 import { App, TFile, normalizePath, requestUrl, stringifyYaml } from 'obsidian';
-import { getSources, upsertFrontmatter } from './merge';
+import { getSources, isCoreManaged, upsertFrontmatter } from './merge';
 import { parseBookUrl, parseSourceHtml } from './sources';
 import { BookRef, ImportSettings, SourceMetadata, sourceKey } from './types';
 
@@ -89,9 +89,10 @@ export class Importer {
         const state = this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import;
         const rawSources = state && typeof state === 'object' ? state.sources : undefined;
         if (Array.isArray(rawSources) && rawSources.some(s => s?.provider === ref.provider && s?.id === ref.id)) {
+          if (isCoreManaged(state)) throw new Error(`${file.path} 已由 Media Core 托管。请把采集结果导出到 Media Core。`);
           throw new Error(`${file.path} 已记录此来源，但插件数据格式不兼容或有误；请先检查该文件。`);
         }
-        warnings.push(`${file.path} 的来源区格式不兼容，未参与本次自动去重检查。`);
+        if (!isCoreManaged(state)) warnings.push(`${file.path} 的来源区格式不兼容，未参与本次自动去重检查。`);
       }
     }
     return [...matches];
@@ -142,6 +143,9 @@ export class Importer {
     const target = explicitTarget ?? matches[0];
     if (!target && plan.candidates.length && !createSeparate) {
       throw new Error(`发现书名与作者匹配的已有作品，请单独预览并选择关联或独立创建：${plan.candidates.map(f => f.path).join('；')}`);
+    }
+    if (target && isCoreManaged(this.app.metadataCache.getFileCache(target)?.frontmatter?.webnovel_import)) {
+      throw new Error('此作品的来源由 Media Core 托管，请把采集结果导出到 Media Core。');
     }
     const cover = await this.cover(metadata, warnings);
     const options = { uid: `work-${crypto.randomUUID()}`, cover, summaryLength: this.settings().summaryLength };

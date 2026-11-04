@@ -80,3 +80,44 @@ Source 与 Work 通过所在文件关联，一份笔记可包含多条 Source。
 - ownership 由采用基线、本地值及来源归属推导；本阶段不增设重复状态标记。
 - 未来添加时间字段需允许旧记录缺失；没有历史证据的时间保持未知。破坏性格式变化必须另定迁移方案、备份和验收，不能随普通刷新静默迁移全库。
 - 阶段 2 已增加完整书名与作者集合的候选提示，用户选择后才关联；同一来源仍优先自动定位。详细差异预览、来源切换权限与变化历史仍属于后续阶段。
+
+## Media Core 规范交换
+
+网文插件从现有作品资料预览或独立笔记的来源记录输出 `media-source/v2`。它使用 Media Core 随构建分发的校验器。独立 Markdown 采用规则仍使用 schema 1，规范观察与本地采用记录各有自己的版本。
+
+| 网文字段 | 交换位置 | 处理 |
+|---|---|---|
+| `title`、`authors`、`tags` | `fields.title`、`fields.authors`、`fields.tags` | 全书名，作者和分类使用各自列表 |
+| `description`、`cover_url` | `fields.summary`、`fields.cover` | 保留完整来源简介与有效图片链接 |
+| `first_published_year`、`first_published_at` | `fields.year`、`fields.release_date` | 只采用明确首发资料，日期保留已知精度 |
+| `serialization_status` | `fields.original_status` | 映射连载、完结、暂停。未知值保留在平台原文区 |
+| `last_updated_at` | `fields.latest_chapter_updated_at` 或平台原文区 | 适配器的章节位置与时间依据都成立才映射，保留无时区的精度。相对时间留原文 |
+| `latest_chapter`、`word_count_text` | `extensions.<provider>` | 保留章节名和“万字”等显示值 |
+| `acquisition`、`evidence`、`warnings` | `observation`、`field_evidence`、`extensions.<provider>` | 采集、人工与读档依据分开，保留限制提示 |
+| `retained_fields` | `field_evidence` 与平台扩展 | 有原采集依据时沿用原观察时间。旧档中无法恢复依据的时间保留原文供核对 |
+
+读档时间只用于该次生成的交换对象。旧 HTML 的读取时刻不作为远端观察时间。混合预览中的手工编辑有独立人工证据，交给 Media Core 预览后按其采用规则处理。新独立刷新为沿用项附加 `retained_field_acquisitions`，从可确认的原采集方式推导证据。独立笔记原有个人数据、正文和本地采用记录仍由既有规则保护。
+
+### 托管写入边界
+
+Media Core 使用 `webnovel_import.schema_version: 2` 和 `managed_by: media-core` 标记托管 Work。新建的托管 Work 在 `sources` 中保留 `provider`、`id`、`url` 身份引用。实际观察、证据和采用值由 Media Core 保存。新网文写入器识别托管标记并提供采集导出路径。
+
+已有独立文件可在 Media Core 的规范来源预览中显式原位交接。适用对象是 UID 和来源归属唯一、来源与旧采用记录完整的 schema 1 网文 Work。导出的来源须已保存在该对象中。预览确认目标文件路径后执行交接，继续使用原 UID、正文、个人属性及未知属性。旧 `sources` 中的完整资料、时间和证据以及 `adopted` 记录原样保留。托管后的新增来源可追加身份引用，旧采用记录保持冻结。身份或记录有冲突时，需先核对。
+
+交接先在原文件冻结旧写入器，同时记录 `handoff_pending`。规范来源经 Media Core 按需保存到实体和 sidecar 的版本 3 后，待完成标记会清除。若在冻结后中断，重新导入同一来源可继续。网文插件的独立刷新仍只适用于 schema 1 文件。
+
+旧写入器验证使用 0.1.1 提交 `2c3ef2aa49a3fd3bacf2a1f15b9f2b15aeb39372` 的真实 Importer，搭配模拟 Vault。schema 1 对照文件可更新。保留两条完整历史来源与旧采用记录的 schema 2 文件，在交接待完成和已完成两种状态下均拒绝刷新、同源另建及关联另一来源。模拟 Markdown 保持字节一致，作品保存与创建次数均为零。开启旧版封面下载后，直接关联另一来源可能在属性拒写之前生成一份未绑定的封面附件。
+
+在包含固定提交的本地仓库运行 `node scripts/verify-media-core-handoff.cjs` 可复跑。
+
+### 更新共享产物
+
+契约权威实现位于 Media Core 仓库的 `obsidian-media-lab/plugin/src/contracts`。更新时从已核对的 Media Core 修订重新生成 `vendor/media-source-v2.cjs`，并同步复制同修订的 `obsidian-media-lab/plugin/contracts/examples/media-source-v2.json` 至 `vendor/examples/`。脚本用法如下。
+
+```sh
+node /path/to/MediaCore/obsidian-media-lab/plugin/tools/export-source-contract.cjs vendor/media-source-v2.cjs
+npm test
+npm run build
+```
+
+本构建的固定校验器 SHA-256 见 [共享契约清单](../vendor/media-source-v2.sha256)。测试同时通过该校验器检查公共样本与普通适配器生成的资料。
