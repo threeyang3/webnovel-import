@@ -32,9 +32,11 @@ function chapterUpdate(source: SourceMetadata, locator: string): string | undefi
   if (!source.latest_chapter || !source.last_updated_at) return undefined;
   // A date next to the latest chapter is distinct from a generic book update date.
   // Old exports without this locator keep the platform text for review.
-  const chapterLocator = source.provider === 'qidian'
-    ? locator.includes('.update-time') || locator.includes('og:novel:update_time')
-    : locator.includes('.info-last-time');
+  const chapterLocator = (source.provider === 'qidian'
+    && (locator.includes('.update-time') || locator.includes('og:novel:update_time')))
+    || (source.provider === 'fanqie' && locator.includes('.info-last-time'))
+    || (source.provider === 'qimao' && locator.includes('.book-information .update-info .update-time'))
+    || (source.provider === 'jjwxc' && locator.includes('tr[itemprop~="newestChapter"]') && locator.includes('可见更新时间'));
   if (!chapterLocator) return undefined;
   return optionalValue(source.last_updated_at.replace(/^(\d{4}-\d\d-\d\d)\s+(?=\d\d:)/, '$1T'), normalizeDisplayTime);
 }

@@ -1,15 +1,13 @@
 import { encodeCapture } from './browser-capture';
-import { getSourceAdapter, parseBookUrl, parseSourceHtml } from './sources';
+import { getSourceAdapter, parseBookUrl, parseSourceDocument } from './sources';
 
 /** Runs only when the user clicks the installed bookmark on an already displayed page. */
 export async function capture(vault: string): Promise<void> {
   try {
     const ref = parseBookUrl(location.href);
     const adapter = getSourceAdapter(ref.provider);
-    if (!adapter.browserCapture) throw new Error('此来源暂不支持浏览器采集书签。');
-    const html = Array.from(document.querySelectorAll(adapter.browserCapture.selectors.join(',')))
-      .map(element => element.outerHTML).join('\n');
-    const metadata = parseSourceHtml(html, ref, 'browser');
+    if (!adapter.browserCapture) throw new Error('此平台可从 Obsidian 的链接或 HTML 入口导入。');
+    const metadata = parseSourceDocument(document, ref, 'browser');
     const payload = encodeCapture(metadata);
     try {
       await navigator.clipboard.writeText(payload);

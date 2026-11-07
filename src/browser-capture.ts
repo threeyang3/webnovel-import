@@ -17,14 +17,14 @@ export function encodeCapture(metadata: SourceMetadata): string {
 export function parseCapturePayload(raw: string, expected?: { provider: string; id: string; capturedAt?: string }): SourceMetadata {
   let packet;
   try { packet = JSON.parse(raw); }
-  catch { throw new Error('剪贴板不是网文采集结果。请在正常显示的起点作品页点击采集书签。'); }
+  catch { throw new Error('剪贴板不是网文采集结果。请在支持采集的作品详情页点击采集书签。'); }
   if (packet?.format !== 'webnovel-import-capture' || packet.version !== 1 || !packet.metadata) {
     throw new Error('未识别的浏览器采集格式，请使用当前版本提供的采集书签。');
   }
   const value = packet.metadata;
   const ref = parseBookUrl(typeof value.url === 'string' ? value.url : '');
   if (!getSourceAdapter(ref.provider).browserCapture || value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== 'browser') {
-    throw new Error('采集资料的作品标识不一致，请重新采集对应的起点详情页。');
+    throw new Error('采集资料的作品标识不一致，或该平台暂不支持书签采集。请核对作品详情页。');
   }
   if (typeof value.title !== 'string' || !value.title.trim() || !Array.isArray(value.authors)
     || !value.authors.length || !value.authors.every((s: unknown) => typeof s === 'string' && s.trim())) {

@@ -6,7 +6,7 @@ export const qidianAdapter = {
   provider: 'qidian',
   name: '起点中文网',
   recoveryHint: '请正常打开作品页，使用设置中的浏览器采集书签，或选择另存的 HTML 文件。',
-  browserCapture: { selectors: ['meta[property^="og:"]', 'meta[name^="og:"]', 'link[rel="canonical"]', '#book-detail', '#book-intro-detail'] },
+  browserCapture: true,
   matchUrl(url: URL): BookRef | undefined {
     const pattern = url.hostname === 'book.qidian.com' ? /^\/info\/(\d+)\/?$/
       : ['www.qidian.com', 'm.qidian.com'].includes(url.hostname) ? /^\/book\/(\d+)\/?$/ : undefined;

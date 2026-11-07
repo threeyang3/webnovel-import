@@ -1,6 +1,6 @@
 # 数据接口约定（schema 1）
 
-日期：2026-11-01。适用于当前 0.1.1 开发构建。本文描述现有代码契约，不是整个个人文娱数据库的统一 schema，也不触发 Vault 迁移。
+适用于 0.3.0 候选构建。schema 1 仅约定 Webnovel Import 的独立笔记格式。
 
 ## 本地 Work、来源 Source、个人数据
 
@@ -15,7 +15,7 @@
 
 Source 与 Work 通过所在文件关联，一份笔记可包含多条 Source。来源身份是 `provider + id`，不是标题。外部 ID 始终为字符串；长数字 ID 不转 Number。本地作品身份不使用外部 ID。
 
-全库手动建档、Series 组织、平台个人标记收录及跨插件整合属于数据库核心职责，本插件不主动扩充关联作品，也不迁移其他插件的数据。当前手动补填入口仍要求已支持的作品链接；无来源 Work 可由用户在插件之外创建。
+无来源建档使用独立的 `ManualWorkDraft`。独立模式创建 `sources: []`，提供的字段保存为本地值，并记录 `adopted.*.source_key: manual:local` 保护用户后续清空。历史平台、链接和说明另存于 `webnovel_import.manual_reference`。首次补挂正式来源时，原位追加 Source 并保留本地 UID、个人属性及正文。
 
 ## Source 字段
 
@@ -29,7 +29,7 @@ Source 与 Work 通过所在文件关联，一份笔记可包含多条 Source。
 | `tags` | 平台分类标签，不写入个人 tags |
 | `serialization_status` | ongoing / completed / paused；自动来源的 unknown 不作为清空依据 |
 | `word_count_text` | 保留网站显示精度，不将“万字”伪装为精确字数 |
-| `first_published_at` / `first_published_year` | 仅明确作品级首发证据或人工补填；现有两站解析器没有可靠首发信息，留空 |
+| `first_published_at` / `first_published_year` | 仅明确作品级首发证据或人工补填。当前已验证的详情页样本未取得可靠作品级首发信息 |
 | `last_updated_at` / `latest_chapter` | 网站显示的更新时间和最新章节，不等于作品首发时间；不推断时区 |
 | `acquisition` | remote：普通 HTTP；html：用户提供页面；browser：浏览器采集；manual：人工补填 |
 | `fetched_at` | 本次获取时间（ISO 字符串），不是平台更新时间，也不是每个字段发生变化的时间 |
@@ -68,7 +68,7 @@ Source 与 Work 通过所在文件关联，一份笔记可包含多条 Source。
 2. `identities` 收集当前页身份，公共入口核对平台与 ID；推荐条目不能冒充当前作品身份。
 3. `parse` 返回 SourceFields，包含资料、evidence、warnings；公共入口补 BookRef、获取时间与方式，并验证书名、作者。
 4. `recoveryHint` 当前为静态文本；HTTP 状态由导入器加入消息。没有实际差异需求时不改成函数。
-5. 可选 `browserCapture` 声明 DOM 选择器；未声明的平台不开放书签采集或剪贴板接收。
+5. 可选 `browserCapture` 声明支持书签。书签用相同适配器解析当前已显示的 DOM，只通过剪贴板发送核对后的元数据。
 
 适配器不执行网络、创建 Markdown、决定字段覆盖、跨平台合并或访问 Vault。所有来源使用同一导入器与合并规则。新增平台需核验真实页面、实现接口、注册并添加对应验证。
 
@@ -104,7 +104,9 @@ Media Core 使用 `webnovel_import.schema_version: 2` 和 `managed_by: media-cor
 
 兼容的 Media Core 构建在插件实例上暴露 `sourceIntake`。Webnovel Import 检查 `apiVersion: 1` 和 `sourceSchema: 'media-source/v2'` 后调用 `openSourcePreview(source, { targetUid })`。`targetUid` 仅用于明确指定当前作品，归属与候选仍由 Core 判定。调用成功表示预览已准备，保存需要在 Core 界面确认。旧版 Core 可继续接收同一对象的 JSON。
 
-已有独立文件可在 Media Core 的规范来源预览中显式原位交接。适用对象是 UID 和来源归属唯一、来源与旧采用记录完整的 schema 1 网文 Work。导出的来源须已保存在该对象中。预览确认目标文件路径后执行交接，继续使用原 UID、正文、个人属性及未知属性。旧 `sources` 中的完整资料、时间和证据以及 `adopted` 记录原样保留。托管后的新增来源可追加身份引用，旧采用记录保持冻结。身份或记录有冲突时，需先核对。
+Media Core 可通过可选能力 `manualWorkApiVersion: 1` 和 `openManualWork(draft, { onAccepted })` 接收本地草稿。先显示同名候选与手工字段，用户确认后使用 Core 的本地 Work 流程。初始托管标记含空来源列表，正式来源以后再挂接。
+
+已有独立文件可在 Media Core 的规范来源预览中显式原位交接。适用对象是 UID 和来源归属唯一、旧来源与采用记录完整的 schema 1 网文，或带 `manual:local` 建档标记的无来源笔记。预览确认目标路径后执行交接，继续使用原 UID、正文、个人属性及未知属性。已有完整来源和采用记录在交接中保留。新来源继续追加身份引用。身份或记录有冲突时需先核对。
 
 交接先在原文件冻结旧写入器，同时记录 `handoff_pending`。规范来源经 Media Core 按需保存到实体和 sidecar 的版本 3 后，待完成标记会清除。若在冻结后中断，重新导入同一来源可继续。网文插件的独立刷新仍只适用于 schema 1 文件。
 

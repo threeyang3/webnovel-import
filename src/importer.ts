@@ -1,9 +1,10 @@
-import { matchesWork } from './matching';
+import { hasNoAuthors, matchesTitle, matchesWork } from './matching';
 import { providerName, getSourceAdapter } from './sources';
 import { App, TFile, getFrontMatterInfo, normalizePath, parseYaml, requestUrl, stringifyYaml } from 'obsidian';
 import { getSources, isCoreManaged, upsertFrontmatter } from './merge';
-import { parseBookUrl, parseSourceHtml } from './sources';
+import { decodeHtmlBytes, parseBookUrl, parseSourceHtml } from './sources';
 import { BookRef, ImportSettings, SourceMetadata, sourceKey } from './types';
+import { isHttpUrl, manualFrontmatter, normalizeManualWork, type ManualWorkDraft } from './manual-work';
 
 export interface ImportResult {
   file: TFile;
@@ -39,27 +40,90 @@ function markdownText(value: string): string {
 export class Importer {
   private queue: Promise<unknown> = Promise.resolve();
   private recent = new Map<string, TFile>();
+  private recentManual = new WeakMap<TFile, Record<string, unknown>>();
 
   constructor(private app: App, private settings: () => ImportSettings) {}
 
   async fetch(input: string): Promise<SourceMetadata> {
     const ref = parseBookUrl(input);
-    const response = await requestUrl({ url: ref.url, headers: { Accept: 'text/html' }, throw: false });
+    const name = providerName(ref.provider);
+    const recovery = getSourceAdapter(ref.provider).recoveryHint;
+    const response = await requestUrl({ url: ref.url, headers: { Accept: 'text/html' }, throw: false }).catch((error: unknown) => {
+      throw new Error(`未能连接${name}：${error instanceof Error ? error.message : String(error)}。${recovery}`);
+    });
     if (response.status !== 200) {
-      const recovery = getSourceAdapter(ref.provider).recoveryHint;
-      throw new Error(`${providerName(ref.provider)}返回 HTTP ${response.status}，未获得可解析的作品页。${recovery}`);
+      let reason = '未获得可解析的作品页';
+      if ([404, 410].includes(response.status)) reason = '此链接的公开页面未找到或已移除，请核对链接';
+      if ([202, 401, 403, 429].includes(response.status)) reason = '普通请求可能受访问限制';
+      throw new Error(`${name}返回 HTTP ${response.status}，${reason}。${recovery}`);
     }
-    return parseSourceHtml(response.text, ref, 'remote');
+    const contentType = Object.entries(response.headers).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
+    const html = ref.provider === 'jjwxc' ? decodeHtmlBytes(response.arrayBuffer, contentType) : response.text;
+    return parseSourceHtml(html, ref, 'remote');
   }
 
   import(metadata: SourceMetadata, target?: TFile, options: { createSeparate?: boolean } = {}): Promise<ImportResult> {
-    const next = this.queue.then(() => this.write(metadata, target, options.createSeparate));
+    return this.enqueue(() => this.write(metadata, target, options.createSeparate));
+  }
+
+  private enqueue<T>(write: () => Promise<T>): Promise<T> {
+    const next = this.queue.then(write);
     this.queue = next.catch(() => undefined);
     return next;
   }
 
+  private cachedFrontmatter(file: TFile): Record<string, unknown> | undefined {
+    const cached = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (cached) this.recentManual.delete(file);
+    return cached ?? this.recentManual.get(file);
+  }
+
+  prepareManual(draft: ManualWorkDraft): ManualWorkDraft {
+    const result = normalizeManualWork(draft);
+    if (!result.cover || isHttpUrl(result.cover)) return result;
+    const path = folderPath(result.cover);
+    if (!/\.(?:jpe?g|png|gif|webp|avif|bmp|svg)$/i.test(path) ||
+        !(this.app.vault.getAbstractFileByPath(path) instanceof TFile)) {
+      throw new Error('封面请填写 Vault 内已存在的图片路径，或完整的 HTTP 或 HTTPS 图片地址。');
+    }
+    return { ...result, cover: path };
+  }
+
+  previewManualMatches(draft: ManualWorkDraft): TFile[] {
+    const authors = draft.authors ?? [];
+    return this.app.vault.getMarkdownFiles().filter(file => {
+      const local = this.cachedFrontmatter(file);
+      return local?.type === 'work' && local.media === 'webnovel' &&
+        (matchesWork(local, { title: draft.title, authors }) ||
+          ((hasNoAuthors(local.authors) || !authors.length) && matchesTitle(local.title, draft.title)));
+    }).sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  async createManual(draft: ManualWorkDraft, options: { createSeparate?: boolean } = {}): Promise<TFile> {
+    const prepared = this.prepareManual(draft);
+    const { createSeparate } = options;
+    return this.enqueue(async () => {
+      if (this.previewManualMatches(prepared).length && !createSeparate) {
+        throw new Error('发现可能已存在的作品，请选择打开已有作品或确认独立创建。');
+      }
+      const folder = folderPath(this.settings().outputFolder);
+      await this.ensureFolder(folder);
+      const base = `${folder ? `${folder}/` : ''}${fileStem(prepared.title)}`;
+      let path = `${base}.md`;
+      for (let suffix = 2; this.app.vault.getAbstractFileByPath(path); suffix++) path = `${base} (${suffix}).md`;
+      path = normalizePath(path);
+      const fm = manualFrontmatter(this.prepareManual(prepared), `work-${crypto.randomUUID()}`);
+      const cover = typeof fm.cover === 'string' && !isHttpUrl(fm.cover)
+        ? this.app.vault.getAbstractFileByPath(fm.cover) : undefined;
+      const coverLink = cover instanceof TFile ? `!${this.app.fileManager.generateMarkdownLink(cover, path, undefined, '封面')}` : undefined;
+      const file = await this.app.vault.create(path, `---\n${stringifyYaml(fm)}---\n\n${this.initialBody(fm, undefined, coverLink)}`);
+      this.recentManual.set(file, fm);
+      return file;
+    });
+  }
+
   sources(file: TFile): SourceMetadata[] {
-    return getSources(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {});
+    return getSources(this.cachedFrontmatter(file) ?? {});
   }
 
   /** Exact source ownership takes precedence over title/author candidates. */
@@ -69,9 +133,15 @@ export class Importer {
     if (exact.length > 1) throw new Error(`同一来源已关联多个文件，请先整理：${exact.map(f => f.path).join('；')}`);
     if (exact[0]) return { exact: exact[0], candidates: [], warnings };
     const candidates = this.app.vault.getMarkdownFiles().filter(file => {
-      const local = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (!local || !matchesWork(local, metadata)) return false;
-      try { this.sources(file); return true; }
+      const local = this.cachedFrontmatter(file);
+      if (!local || !matchesTitle(local.title, metadata.title)) return false;
+      try {
+        const sources = getSources(local);
+        // Authorless, sourceless webnovels can be selected after a title match.
+        // A title match never binds a source or updates an existing Work on its own.
+        return matchesWork(local, metadata) ||
+          (local.type === 'work' && local.media === 'webnovel' && !sources.length && hasNoAuthors(local.authors));
+      }
       catch { return false; } // Invalid plugin state cannot be an association target.
     }).sort((a, b) => a.path.localeCompare(b.path));
     return { candidates, warnings };
@@ -141,7 +211,7 @@ export class Importer {
     }
     const target = explicitTarget ?? plan.exact;
     if (!target && plan.candidates.length && !createSeparate) {
-      throw new Error(`发现书名与作者匹配的已有作品，请单独预览并选择关联或独立创建：${plan.candidates.map(f => f.path).join('；')}`);
+      throw new Error(`发现可能已存在的作品，请单独预览并选择关联或独立创建：${plan.candidates.map(f => f.path).join('；')}`);
     }
     if (target) {
       // A handoff can update the note before Obsidian refreshes its metadata cache.
@@ -183,14 +253,15 @@ export class Importer {
     return { file, created: true, adopted: result.adopted, preserved: result.preserved, warnings };
   }
 
-  private initialBody(frontmatter: Record<string, unknown>, metadata: SourceMetadata): string {
+  private initialBody(frontmatter: Record<string, unknown>, metadata?: SourceMetadata, coverLink?: string): string {
     const lines = [`# ${markdownText(String(frontmatter.title))}`, ''];
     const cover = frontmatter.cover;
     if (typeof cover === 'string') {
-      lines.push(/^https?:\/\//i.test(cover) ? `![封面](<${cover.replace(/>/g, '%3E')}>)` : `![[${cover}]]`, '');
+      lines.push(coverLink ?? (/^https?:\/\//i.test(cover) ? `![封面](<${cover.replace(/>/g, '%3E')}>)` : `![[${cover}]]`), '');
     }
     if (frontmatter.summary) lines.push(markdownText(String(frontmatter.summary)), '');
-    lines.push(`[作品详情 · ${providerName(metadata.provider)}](${metadata.url})`, '', '<!-- 正文由你维护；刷新仅更新属性中的来源信息和未被人工修改的采用值。 -->', '');
+    if (metadata) lines.push(`[作品详情 · ${providerName(metadata.provider)}](${metadata.url})`, '');
+    lines.push('<!-- 正文由你维护；刷新仅更新属性中的来源信息和未被人工修改的采用值。 -->', '');
     return lines.join('\n');
   }
 }
