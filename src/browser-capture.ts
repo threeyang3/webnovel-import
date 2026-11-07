@@ -1,11 +1,13 @@
 import { getSourceAdapter, parseBookUrl } from './sources';
-import type { SourceMetadata } from './types';
+import type { BookRef, SourceMetadata } from './types';
 
 declare const __BROWSER_CAPTURE_CODE__: string;
 
+export function browserCaptureBundle(): string { return __BROWSER_CAPTURE_CODE__; }
+
 /** This bundle is built from our parser, never from downloaded website scripts. */
 export function makeBookmarklet(vault: string): string {
-  const script = `void(function(){${__BROWSER_CAPTURE_CODE__};WebnovelBrowser.capture(${JSON.stringify(vault)});})()`;
+  const script = `void(function(){${browserCaptureBundle()};WebnovelBrowser.capture(${JSON.stringify(vault)});})()`;
   return `javascript:${encodeURIComponent(script)}`;
 }
 
@@ -21,10 +23,26 @@ export function parseCapturePayload(raw: string, expected?: { provider: string; 
   if (packet?.format !== 'webnovel-import-capture' || packet.version !== 1 || !packet.metadata) {
     throw new Error('未识别的浏览器采集格式，请使用当前版本提供的采集书签。');
   }
-  const value = packet.metadata;
-  const ref = parseBookUrl(typeof value.url === 'string' ? value.url : '');
-  if (!getSourceAdapter(ref.provider).browserCapture || value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== 'browser') {
+  const result = parseCapturedMetadata(packet.metadata);
+  if (!getSourceAdapter(result.provider).browserCapture) {
     throw new Error('采集资料的作品标识不一致，或该平台暂不支持书签采集。请核对作品详情页。');
+  }
+  if (expected && (result.provider !== expected.provider || result.id !== expected.id
+    || (expected.capturedAt !== undefined && result.fetched_at !== expected.capturedAt))) {
+    throw new Error('剪贴板内容与刚采集的资料不一致，请重新点击该作品的采集书签。');
+  }
+  result.evidence.acquisition = '用户在正常显示的作品页点击采集书签，经本机剪贴板导入';
+  return result;
+}
+
+/** Both browser transports validate identity and accept only the source metadata fields. */
+export function parseCapturedMetadata(data: unknown, expected?: BookRef): SourceMetadata {
+  if (!data || typeof data !== 'object') throw new Error('没有收到可用的作品资料。');
+  const value = data as Record<string, unknown>;
+  const ref = parseBookUrl(typeof value.url === 'string' ? value.url : '');
+  if (value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== 'browser'
+    || (expected && (ref.provider !== expected.provider || ref.id !== expected.id))) {
+    throw new Error('采集资料的作品标识不一致，请核对作品详情页。');
   }
   if (typeof value.title !== 'string' || !value.title.trim() || !Array.isArray(value.authors)
     || !value.authors.length || !value.authors.every((s: unknown) => typeof s === 'string' && s.trim())) {
@@ -32,10 +50,6 @@ export function parseCapturePayload(raw: string, expected?: { provider: string; 
   }
   if (typeof value.fetched_at !== 'string' || !Number.isFinite(Date.parse(value.fetched_at))) {
     throw new Error('采集资料缺少有效获取时间，请重新采集。');
-  }
-  if (expected && (ref.provider !== expected.provider || ref.id !== expected.id
-    || (expected.capturedAt !== undefined && value.fetched_at !== expected.capturedAt))) {
-    throw new Error('剪贴板内容与刚采集的资料不一致，请重新点击该作品的采集书签。');
   }
   const result: SourceMetadata = {
     ...ref, title: value.title.trim(), authors: value.authors.map((s: string) => s.trim()),
@@ -52,14 +66,14 @@ export function parseCapturePayload(raw: string, expected?: { provider: string; 
     result.cover_url = url.href;
   }
   if (Array.isArray(value.tags) && value.tags.every((s: unknown) => typeof s === 'string')) result.tags = value.tags;
-  if (['ongoing', 'completed', 'paused', 'unknown'].includes(value.serialization_status)) {
+  if (value.serialization_status === 'ongoing' || value.serialization_status === 'completed'
+    || value.serialization_status === 'paused' || value.serialization_status === 'unknown') {
     result.serialization_status = value.serialization_status;
   }
   for (const key of ['identity', 'title', 'authors', 'description', 'cover_url', 'tags', 'serialization_status', 'word_count_text', 'last_updated_at', 'latest_chapter']) {
-    const evidence = value.evidence?.[key];
+    const evidence = (value.evidence as Record<string, unknown> | undefined)?.[key];
     if (typeof evidence === 'string') result.evidence[key] = evidence;
   }
-  result.evidence.acquisition = '用户在正常显示的作品页点击采集书签，经本机剪贴板导入';
   result.warnings = ['浏览器页面采集；不代表普通 HTTP 自动刷新已可用。',
     '未获得明确的作品首发日期，首发年份留空；不会用最近更新时间或章节日期推断年份。'];
   if (!result.cover_url) result.warnings.push('未提取到可用封面地址，可稍后手动补充。');

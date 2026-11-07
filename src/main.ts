@@ -10,17 +10,20 @@ import { sourceKey } from './types';
 import { openMediaCorePreview, resolveImportRoute } from './media-core-integration';
 import { ManualWorkModal } from './manual-ui';
 import { SearchModal } from './search-ui';
+import { SearchBrowserModal } from './search-browser';
+import type { SearchProvider } from './search';
 
 export default class WebnovelPlugin extends Plugin {
   settings: ImportSettings = { ...DEFAULT_SETTINGS };
   importer!: Importer;
   searchKeyword = '';
+  private searchBrowser?: SearchBrowserModal;
   private browserTarget?: { key: string; file?: TFile };
 
   async onload(): Promise<void> {
     this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
     this.importer = new Importer(this.app, () => this.settings);
-    this.addCommand({ id: 'search-works', name: '搜索网文作品', callback: () => new SearchModal(this).open() });
+    this.addCommand({ id: 'search-works', name: '搜索网文作品', callback: () => this.openSearch() });
     this.addCommand({ id: 'import-book', name: '从链接导入网文作品', callback: () => new SingleImportModal(this).open() });
     this.addCommand({ id: 'manual-work', name: '手动添加网文作品', callback: () => new ManualWorkModal(this).open() });
     this.addCommand({ id: 'import-links', name: '批量导入网文作品链接', callback: () => new BatchImportModal(this).open() });
@@ -65,6 +68,19 @@ export default class WebnovelPlugin extends Plugin {
       },
     });
     this.addSettingTab(new WebnovelSettings(this));
+  }
+
+  openSearch(): void { new SearchModal(this).open(); }
+
+  openSearchBrowser(provider: SearchProvider, keyword: string): void {
+    this.searchBrowser?.close();
+    this.searchBrowser = new SearchBrowserModal(this, provider, keyword);
+    this.searchBrowser.open();
+  }
+
+  onunload(): void {
+    this.searchBrowser?.close();
+    this.searchBrowser = undefined;
   }
 
   private activeMarkdown(): TFile | null {

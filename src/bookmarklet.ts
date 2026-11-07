@@ -1,5 +1,6 @@
 import { encodeCapture } from './browser-capture';
 import { getSourceAdapter, parseBookUrl, parseSourceDocument } from './sources';
+export { prepareSearchPage, readSearchWork } from './search-page';
 
 /** Runs only when the user clicks the installed bookmark on an already displayed page. */
 export async function capture(vault: string): Promise<void> {

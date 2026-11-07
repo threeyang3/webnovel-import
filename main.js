@@ -1972,7 +1972,7 @@ function parseSourceDocument(doc, ref, acquisition) {
 }
 
 // src/main.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/matching.ts
 var normalize = (value) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
@@ -3051,8 +3051,11 @@ var BatchImportModal = class extends import_obsidian2.Modal {
 };
 
 // src/browser-capture.ts
+function browserCaptureBundle() {
+  return '"use strict";var WebnovelBrowser=(()=>{var C=Object.defineProperty;var ae=Object.getOwnPropertyDescriptor;var se=Object.getOwnPropertyNames;var ce=Object.prototype.hasOwnProperty;var de=(t,r)=>{for(var e in r)C(t,e,{get:r[e],enumerable:!0})},ue=(t,r,e,o)=>{if(r&&typeof r=="object"||typeof r=="function")for(let n of se(r))!ce.call(t,n)&&n!==e&&C(t,n,{get:()=>r[n],enumerable:!(o=ae(r,n))||o.enumerable});return t};var pe=t=>ue(C({},"__esModule",{value:!0}),t);var we={};de(we,{capture:()=>ge,prepareSearchPage:()=>ne,readSearchWork:()=>ie});var d=t=>t?.replace(/\\u00a0/g," ").replace(/[\\t ]+/g," ").trim()||void 0;function c(t,r){return d(t.querySelector(r)?.textContent)}function k(t,r){let e=t.querySelector(r);if(!e)return;let o=e.cloneNode(!0);return o.querySelectorAll("br").forEach(n=>n.replaceWith(`\n`)),o.querySelectorAll("script, style").forEach(n=>n.remove()),d(o.textContent?.replace(/\\r\\n?/g,`\n`).replace(/[\\t ]*\\n[\\t ]*/g,`\n`))}function l(t,r){return d(t.querySelector(`meta[property="${r}"], meta[name="${r}"]`)?.getAttribute("content"))}function m(t,r){if(t?.trim())try{let e=new URL(t.trim(),r);return["http:","https:"].includes(e.protocol)&&!e.username&&!e.password?e.href:void 0}catch{return}}function g(t){if(t){if(/\u5B8C\u7ED3|\u5B8C\u672C|\u5DF2\u5B8C\u6210/.test(t))return"completed";if(/\u6682\u505C|\u505C\u66F4|\u65AD\u66F4/.test(t))return"paused";if(/\u8FDE\u8F7D/.test(t))return"ongoing"}}function y(t,r,e){let o=[],n=(i,a)=>{if(i)try{o.push({book:e(new URL(i,r.url).href),evidence:a})}catch{}};n(t.querySelector(\'link[rel="canonical"]\')?.getAttribute("href"),\'link[rel="canonical"]\');for(let i of["og:url","og:novel:book_url","og:novel:read_url"])n(l(t,i),`meta ${i}`);return{identities:o,addUrl:n}}function M(t,r){if(!t.length)throw new Error("\\u672A\\u8BC6\\u522B\\u5230\\u53EF\\u6838\\u5BF9\\u7684\\u4F5C\\u54C1\\u6807\\u8BC6\\uFF0C\\u4E0D\\u80FD\\u5C06\\u9875\\u9762\\u8D44\\u6599\\u7ED1\\u5B9A\\u5230\\u8F93\\u5165\\u94FE\\u63A5\\uFF1B\\u8BF7\\u63D0\\u4F9B\\u5B8C\\u6574\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u6216\\u4F7F\\u7528\\u624B\\u52A8\\u5EFA\\u6863\\u3002");for(let{book:e}of t)if(e.provider!==r.provider||e.id!==r.id)throw new Error("\\u9875\\u9762\\u6807\\u8BC6\\u4E0E\\u8F93\\u5165\\u7684\\u4F5C\\u54C1\\u94FE\\u63A5\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u6838\\u5BF9\\u94FE\\u63A5\\u548C HTML \\u6587\\u4EF6\\u3002");return t.map(e=>e.evidence).join("\\uFF1B")}var I={provider:"qidian",name:"\\u8D77\\u70B9\\u4E2D\\u6587\\u7F51",recoveryHint:"\\u8BF7\\u6B63\\u5E38\\u6253\\u5F00\\u4F5C\\u54C1\\u9875\\uFF0C\\u4F7F\\u7528\\u8BBE\\u7F6E\\u4E2D\\u7684\\u6D4F\\u89C8\\u5668\\u91C7\\u96C6\\u4E66\\u7B7E\\uFF0C\\u6216\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\u3002",browserCapture:!0,matchUrl(t){let e=(t.hostname==="book.qidian.com"?/^\\/info\\/(\\d+)\\/?$/:["www.qidian.com","m.qidian.com"].includes(t.hostname)?/^\\/book\\/(\\d+)\\/?$/:void 0)?.exec(t.pathname)?.[1];return e?{provider:"qidian",id:e,url:`https://www.qidian.com/book/${e}/`}:void 0},identities(t,r,e){let{identities:o}=y(t,r,e),n=t.querySelector("#book-detail #bookImg")?.getAttribute("data-bid");return n&&/^\\d+$/.test(n)&&o.push({book:{...r,id:n},evidence:"#book-detail #bookImg[data-bid]"}),o},parse(t,r){let e={title:"",authors:[],evidence:{},warnings:[]},o=t.querySelector("#book-detail .book-info-top"),n=o?c(o,"#bookName"):void 0,i=o?d(c(o,".book-meta .author")?.replace(/^\u4F5C\u8005\\s*[\uFF1A:]\\s*/,"")):void 0;e.title=n||l(t,"og:novel:book_name")||"";let a=i||l(t,"og:novel:author");a&&(e.authors=[a]);let u=k(t,"#book-intro-detail");e.description=u||l(t,"og:novel:description")||l(t,"og:description");let s=t.querySelector("#book-detail #bookImg"),p=s?.getAttribute("data-bid")===r.id?m(s.querySelector("img")?.getAttribute("src"),r.url):void 0;e.cover_url=p||m(l(t,"og:image"),r.url);let w=o?Array.from(o.querySelectorAll(".book-attribute a")).map(v=>d(v.textContent)).filter(v=>!!v):[],q=l(t,"og:novel:category");w.length?e.tags=[...new Set(w)]:q&&(e.tags=[q]);let f=o?Array.from(o.querySelectorAll(".book-attribute span")).map(v=>g(d(v.textContent))).find(v=>v!==void 0):void 0;e.serialization_status=f||g(l(t,"og:novel:status"));let b=(o?Array.from(o.querySelectorAll(".count cite")).find(v=>d(v.textContent)==="\\u5B57"):void 0)?.previousElementSibling,L=b?.tagName.toLowerCase()==="em"&&d(b.textContent)?`${d(b.textContent)}\\u5B57`:void 0;e.word_count_text=L||l(t,"og:novel:word_count");let T=o?d(c(o,".book-meta .update-time")?.replace(/^\u66F4\u65B0\u65F6\u95F4\\s*[\uFF1A:]\\s*/,"")):void 0,P=o?d(c(o,".book-latest-chapter")?.replace(/^\u6700\u65B0\u7AE0\u8282\\s*[\uFF1A:]\\s*/,"")):void 0;return e.last_updated_at=T||l(t,"og:novel:update_time"),e.latest_chapter=P||l(t,"og:novel:latest_chapter_name"),e.evidence.title=n?"#book-detail .book-info-top #bookName":"meta og:novel:book_name",e.evidence.authors=i?"#book-detail .book-info-top .book-meta .author":"meta og:novel:author",e.description&&(e.evidence.description=u?"#book-intro-detail\\uFF1B\\u4FDD\\u7559br\\u6362\\u884C":"meta og:novel:description / og:description"),e.cover_url&&(e.evidence.cover_url=p?"#book-detail #bookImg[data-bid\\u4E0E\\u4F5C\\u54C1ID\\u4E00\\u81F4] img[src]":"meta og:image"),e.tags&&(e.evidence.tags=w.length?"#book-detail .book-info-top .book-attribute a":"meta og:novel:category"),e.serialization_status&&(e.evidence.serialization_status=f?"#book-detail .book-info-top .book-attribute span":"meta og:novel:status"),e.word_count_text&&(e.evidence.word_count_text=L?"#book-detail .book-info-top .count\\uFF1B\\u4EC5\\u53D6\\u5B57\\u6570\\uFF0C\\u4FDD\\u7559\\u663E\\u793A\\u7CBE\\u5EA6":"meta og:novel:word_count"),e.last_updated_at&&(e.evidence.last_updated_at=T?"#book-detail .book-info-top .update-time\\uFF1B\\u975E\\u9996\\u53D1\\u65E5\\u671F":"meta og:novel:update_time\\uFF1B\\u975E\\u9996\\u53D1\\u65E5\\u671F"),e.latest_chapter&&(e.evidence.latest_chapter=P?"#book-detail .book-info-top .book-latest-chapter":"meta og:novel:latest_chapter_name"),e}};function le(t,r,e){for(let n of Array.from(t.querySelectorAll(\'script[type="application/ld+json"]\'))){let i;try{let p=JSON.parse(n.textContent||"");if(!p||typeof p!="object"||Array.isArray(p))continue;i=p}catch{continue}if(typeof i["@id"]!="string")continue;let a;try{a=e(i["@id"])}catch{continue}if(a.provider!==r.provider||a.id!==r.id)continue;let u=i.images??i.image,s=Array.isArray(u)?u:[u];for(let p of s){if(typeof p!="string")continue;let w=m(p,r.url);if(w)return{url:w,evidence:"\\u4F5C\\u54C1\\u9875 JSON-LD images/image\\uFF0C@id \\u4E0E\\u4F5C\\u54C1\\u94FE\\u63A5\\u4E00\\u81F4"}}}let o=m(t.querySelector(".page-header-info .book-cover-img")?.getAttribute("src"),r.url);if(!(!o||new URL(o).pathname.includes("/novel-static/5cb03bd354145bc7815a5e09d4b15cfc")))return{url:o,evidence:"\\u4F5C\\u54C1\\u9875 .page-header-info .book-cover-img[src]\\uFF0C\\u5DF2\\u6392\\u9664\\u5DF2\\u77E5\\u52A0\\u8F7D\\u5360\\u4F4D\\u56FE"}}var z={provider:"fanqie",name:"\\u756A\\u8304\\u5C0F\\u8BF4",recoveryHint:"\\u53EF\\u5728\\u6D4F\\u89C8\\u5668\\u6B63\\u5E38\\u6253\\u5F00\\u540E\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\uFF0C\\u6216\\u624B\\u52A8\\u8865\\u586B\\u3002",matchUrl(t){let r=t.hostname==="fanqienovel.com"?/^\\/page\\/(\\d+)\\/?$/.exec(t.pathname)?.[1]:void 0;return r?{provider:"fanqie",id:r,url:`https://fanqienovel.com/page/${r}`}:void 0},identities(t,r,e){let{identities:o,addUrl:n}=y(t,r,e);if(!o.length)for(let i of Array.from(t.querySelectorAll(\'script[type="application/ld+json"]\'))){let a;try{a=JSON.parse(i.textContent||"")}catch{continue}let u=Array.isArray(a)?a:[a];for(let s of u)s&&typeof s=="object"&&typeof s["@id"]=="string"&&n(s["@id"],"\\u4F5C\\u54C1\\u9875 JSON-LD \\u9876\\u5C42 @id")}return o},parse(t,r,e){let o={title:"",authors:[],evidence:{},warnings:[]},n=t.querySelector(".page-header-info");o.title=n&&c(n,".info-name h1")||"";let i=n&&c(n,".author-name-text");i&&(o.authors=[i]);let a=le(t,r,e);return a&&(o.cover_url=a.url,o.evidence.cover_url=a.evidence),n&&(o.tags=Array.from(n.querySelectorAll(".info-label-grey")).map(u=>d(u.textContent)).filter(u=>!!u),o.serialization_status=g(c(n,".info-label-yellow")),o.word_count_text=c(n,".info-count-word")?.replace(/\\s/g,""),o.last_updated_at=c(n,".info-last-time"),o.latest_chapter=c(n,".info-last-title")?.replace(/^\u6700\u8FD1\u66F4\u65B0\\s*[\uFF1A:]\\s*/,"")),o.description=c(t,".page-body .page-abstract-content"),o.evidence.title="\\u4F5C\\u54C1\\u9875 .page-header-info .info-name h1",o.evidence.authors="\\u4F5C\\u54C1\\u9875 .page-header-info .author-name-text",o.description&&(o.evidence.description="\\u4F5C\\u54C1\\u9875 .page-body .page-abstract-content"),o.tags?.length&&(o.evidence.tags="\\u4F5C\\u54C1\\u9875 .page-header-info .info-label-grey"),o.serialization_status&&(o.evidence.serialization_status="\\u4F5C\\u54C1\\u9875 .info-label-yellow"),o.word_count_text&&(o.evidence.word_count_text="\\u4F5C\\u54C1\\u9875 .info-count-word\\uFF1B\\u4FDD\\u7559\\u7F51\\u7AD9\\u663E\\u793A\\u7CBE\\u5EA6"),o.last_updated_at&&(o.evidence.last_updated_at="\\u4F5C\\u54C1\\u9875 .info-last-time\\uFF1B\\u5E73\\u53F0\\u539F\\u59CB\\u663E\\u793A\\u65F6\\u95F4\\uFF0C\\u975E\\u9996\\u53D1\\u65E5\\u671F"),o.latest_chapter&&(o.evidence.latest_chapter="\\u4F5C\\u54C1\\u9875 .info-last-title"),o}};var h=".book-information",F=".wrap-txt > .title > .txt",H=".sub-title .txt",R=".update-info .update-chapter-title a",N=".update-info .update-time",O=".book-introduction .intro",W={provider:"qimao",name:"\\u4E03\\u732B\\u4E2D\\u6587\\u7F51",recoveryHint:"\\u8BF7\\u6B63\\u5E38\\u6253\\u5F00\\u4F5C\\u54C1\\u9875\\uFF0C\\u4F7F\\u7528\\u6D4F\\u89C8\\u5668\\u91C7\\u96C6\\u4E66\\u7B7E\\uFF0C\\u6216\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\u3002",browserCapture:!0,matchUrl(t){let r=t.hostname==="www.qimao.com"?/^\\/shuku\\/(\\d+)\\/?$/.exec(t.pathname)?.[1]:void 0;return r?{provider:"qimao",id:r,url:`https://www.qimao.com/shuku/${r}/`}:void 0},identities(t,r,e){let{identities:o,addUrl:n}=y(t,r,e),i=t.querySelector(`${h} ${R}`)?.getAttribute("href");if(i)try{let a=new URL(i,r.url),u=/^\\/shuku\\/(\\d+)-\\d+\\/?$/.exec(a.pathname);u&&(a.pathname=`/shuku/${u[1]}/`,n(a.href,`${h} ${R}[href] \\u7684\\u4F5C\\u54C1 ID`))}catch{}return o},parse(t,r){let e={title:"",authors:[],evidence:{},warnings:[]},o=t.querySelector(h);if(!o)return e;e.title=c(o,F)||"";let n=Array.from(o.querySelectorAll(H)).find(s=>/^\u4F5C\u8005\\s*[\uFF1A:]/.test(d(s.textContent)??"")),i=n&&c(n,"em a");i&&(e.authors=[i]),e.description=k(t,O);let a=m(o.querySelector(".wrap-pic > img")?.getAttribute("src"),r.url);a&&/^https?:\\/\\/cdn\\.qimao\\.com\\/bookimg\\/[^?#]*\\/readerCover\\//.test(a)&&(e.cover_url=a);let u=Array.from(o.querySelectorAll(\'.tags-wrap a[href*="/shuku/a-"]\')).map(s=>d(s.textContent)).filter(s=>!!s);return u.length&&(e.tags=[...new Set(u)]),e.serialization_status=Array.from(o.querySelectorAll(".tags-wrap > .qm-tag")).map(s=>g(d(s.textContent))).find(s=>s!==void 0),e.word_count_text=Array.from(o.querySelectorAll(".statistics-wrap > .txt")).map(s=>d(s.textContent)?.replace(/\\s/g,"")).find(s=>s&&/^\\d[\\d,.]*(?:\u4E07|\u4EBF)?\u5B57$/.test(s)),e.last_updated_at=c(o,N),e.latest_chapter=c(o,R),e.evidence.title=`${h} ${F}`,e.evidence.authors=`${h} ${H}\\uFF08\\u4F5C\\u8005\\u6807\\u7B7E\\uFF09 em a`,e.description&&(e.evidence.description=O),e.cover_url&&(e.evidence.cover_url=`${h} .wrap-pic > img[src]\\uFF0C\\u4F5C\\u54C1\\u5C01\\u9762\\u8DEF\\u5F84`),e.tags&&(e.evidence.tags=`${h} .tags-wrap \\u5185\\u4E66\\u5E93\\u5206\\u7C7B\\u94FE\\u63A5`),e.serialization_status&&(e.evidence.serialization_status=`${h} .tags-wrap > .qm-tag`),e.word_count_text&&(e.evidence.word_count_text=`${h} .statistics-wrap > .txt\\uFF08\\u5B57\\u6570\\uFF09`),e.last_updated_at&&(e.evidence.last_updated_at=`${h} ${N}\\uFF08\\u6700\\u65B0\\u7AE0\\u8282\\u65F6\\u95F4\\uFF09`),e.latest_chapter&&(e.evidence.latest_chapter=`${h} ${R}`),e}};var J=\'td.readtd a[href*="m.jjwxc.net/book2/"]\',A="body > div.b.module > h2.big > span.uninterested-author[data-novelid]",x="#info #left",K=\'td.sptd h1[itemprop="name"] [itemprop="articleSection"]\',G=\'td.sptd h2 [itemprop="author"]\',X=\'tr[itemprop~="newestChapter"]\',V=`${X} [itemprop="headline"] a[itemprop="url"]`,Q=`${X} td[title*="\\u7AE0\\u8282\\u9996\\u53D1\\u65F6\\u95F4"]`,Y=\'img.noveldefaultimage[itemprop="image"]\';function j(t){return t&&/^\\d{4}-\\d{2}-\\d{2}(?: \\d{2}:\\d{2}:\\d{2})?$/.test(t)?t:void 0}function fe(t,r){let e=t.querySelector(Y),o=m(e?.getAttribute("src"),r.url),n=m(e?.getAttribute("_src"),r.url);if(!o||!n||o===n)return;let i=new URL(n),a=new URL(o);if(!(!/^i\\d+-static\\.jjwxc\\.net$/.test(i.hostname)||i.pathname!=="/novelimage.php"||i.searchParams.get("novelid")!==r.id||!/^i\\d+-static\\.jjwxc\\.net$/.test(a.hostname))&&(a.pathname==="/authorimagespace.php"||a.pathname.startsWith("/tmp/backend/authorspace/")))return o}function Z(t,r,e,o){let n=[r,...Array.from(e,i=>d(i.textContent))].filter(i=>!!i);n.length&&(t.tags=[...new Set(n)],t.evidence.tags=o)}function me(t,r,e){let o=\'#novelintro[itemprop="description"]\',n=".smallreadbody",i=\'body > meta[itemprop="dateModified"]\';e.title=c(t,K)||"";let a=c(t,G);a&&(e.authors=[a]),e.cover_url=fe(t,r),e.description=k(t,o),e.serialization_status=g(c(t,\'[itemprop="updataStatus"]\')),e.word_count_text=c(t,\'[itemprop="wordCount"]\'),e.latest_chapter=c(t,V);let u=e.latest_chapter&&j(c(t,Q)?.replace(/\\s*\\*\u6700\u65B0\u66F4\u65B0$/,""));e.last_updated_at=u||j(d(t.querySelector(i)?.getAttribute("content"))),Z(e,c(t,\'[itemprop="genre"]\'),t.querySelectorAll(`${n} a[href*="bookbase.php?bq="]`),"\\u4F5C\\u54C1\\u9875 [itemprop=genre] \\u53CA .smallreadbody \\u5185\\u5BB9\\u6807\\u7B7E\\u94FE\\u63A5"),e.evidence.title=K,e.evidence.authors=G,e.cover_url&&(e.evidence.cover_url=`${Y}[src]\\uFF0C\\u6709\\u522B\\u4E8E\\u672C\\u4E66\\u9ED8\\u8BA4\\u5C01\\u9762 _src`),e.description&&(e.evidence.description=o),e.serialization_status&&(e.evidence.serialization_status="\\u4F5C\\u54C1\\u9875 [itemprop=updataStatus]"),e.word_count_text&&(e.evidence.word_count_text="\\u4F5C\\u54C1\\u9875 [itemprop=wordCount]"),e.latest_chapter&&(e.evidence.latest_chapter=V),e.last_updated_at&&(e.evidence.last_updated_at=u?`${Q} \\u7684\\u53EF\\u89C1\\u66F4\\u65B0\\u65F6\\u95F4`:`${i}[content]\\uFF08\\u4F5C\\u54C1\\u66F4\\u65B0\\u65F6\\u95F4\\uFF09`)}function he(t,r,e){let o=`${x} .authorname-content > a[href^="/wapauthor/"]`,n="li#novelintro",i=`${n} #novelintro_whole`,a=Array.from(t.querySelectorAll(`${x} > li`)),u=f=>a.map(S=>d(S.textContent)).find(S=>S?.startsWith(`${f}\\uFF1A`))?.slice(f.length+1).trim();e.title=d(r.getAttribute("data-novelname"))||"";let s=c(t,o),p=s||d(r.getAttribute("data-authorname"));if(p&&(e.authors=[p]),e.description=k(t,i),e.description)e.evidence.description=i;else if(!t.querySelector(i)){let f=t.querySelector(n)?.childNodes,S=Array.from(f??[],b=>b.nodeType===3?b.textContent?.replace(/\\s+/g," "):b.nodeName==="BR"?`\n`:"").join("");e.description=d(S.replace(/^\\s*\u7B80\u4ECB\\s*[\uFF1A:]\\s*/,"").replace(/ *\\n */g,`\n`)),e.description&&(e.evidence.description=`${n} \\u7684\\u76F4\\u63A5\\u6587\\u672C\\u4E0E br`)}let w=u("\\u72B6\\u6001");e.serialization_status=g(w),e.word_count_text=w?.split("/").map(f=>f.trim()).find(f=>/^\\d+\u5B57$/.test(f));let q=t.querySelector(\'meta[name="description"]\')?.getAttribute("content");e.last_updated_at=j(q?.match(/\\|\u6700\u65B0\u66F4\u65B0\\s*[\uFF1A:]\\s*([^|]+)\\|/)?.[1].trim()),Z(e,u("\\u7C7B\\u578B"),t.querySelectorAll(`${x} > li a[href^="/assort/"]`),"\\u79FB\\u52A8\\u4F5C\\u54C1\\u9875\\u7C7B\\u578B\\u53CA\\u5185\\u5BB9\\u6807\\u7B7E\\u94FE\\u63A5"),e.evidence.title=`${A}[data-novelname]`,e.evidence.authors=s?o:`${A}[data-authorname]`,e.serialization_status&&(e.evidence.serialization_status=`${x} \\u72B6\\u6001`),e.word_count_text&&(e.evidence.word_count_text=`${x} \\u72B6\\u6001\\u4E2D\\u7684\\u5B57\\u6570`),e.last_updated_at&&(e.evidence.last_updated_at=\'meta[name="description"] \\u7684\\u6700\\u65B0\\u66F4\\u65B0\\uFF08\\u4F5C\\u54C1\\u66F4\\u65B0\\u65F6\\u95F4\\uFF09\')}var ee={provider:"jjwxc",name:"\\u664B\\u6C5F\\u6587\\u5B66\\u57CE",recoveryHint:"\\u8BF7\\u6B63\\u5E38\\u6253\\u5F00\\u684C\\u9762\\u6216\\u79FB\\u52A8\\u4F5C\\u54C1\\u9875\\uFF0C\\u4F7F\\u7528\\u6D4F\\u89C8\\u5668\\u91C7\\u96C6\\u4E66\\u7B7E\\uFF0C\\u6216\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\u3002",browserCapture:!0,matchUrl(t){let r;if(t.hostname==="www.jjwxc.net"&&t.pathname==="/onebook.php"&&!t.searchParams.has("chapterid")){let e=t.searchParams.getAll("novelid");e.length===1&&/^\\d+$/.test(e[0])&&(r=e[0])}return t.hostname==="m.jjwxc.net"&&(r=/^\\/book2\\/(\\d+)\\/?$/.exec(t.pathname)?.[1]),r?{provider:"jjwxc",id:r,url:`https://www.jjwxc.net/onebook.php?novelid=${r}`}:void 0},identities(t,r,e){let{identities:o,addUrl:n}=y(t,r,e);n(t.querySelector(J)?.getAttribute("href"),`${J}[href]`);let i=t.querySelector(A)?.getAttribute("data-novelid");return i&&/^\\d+$/.test(i)&&o.push({book:{...r,id:i},evidence:`${A}[data-novelid]`}),o},parse(t,r){let e={title:"",authors:[],evidence:{},warnings:[]},o=t.querySelector(A);return o?he(t,o,e):me(t,r,e),e}};var E=[I,z,W,ee];function $(t){let r=E.find(e=>e.provider===t);if(!r)throw new Error(`\\u4E0D\\u652F\\u6301\\u7684\\u4F5C\\u54C1\\u6765\\u6E90\\uFF1A${t}`);return r}function _(t){let r;try{r=new URL(t.trim())}catch{throw new Error("\\u8BF7\\u8F93\\u5165\\u5B8C\\u6574\\u7684\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u94FE\\u63A5\\u3002")}if(!["https:","http:"].includes(r.protocol)||r.username||r.password||r.port)throw new Error("\\u4F5C\\u54C1\\u94FE\\u63A5\\u5FC5\\u987B\\u662F\\u666E\\u901A\\u7684 HTTP \\u6216 HTTPS \\u5B98\\u7F51\\u94FE\\u63A5\\u3002");for(let e of E){let o=e.matchUrl(r);if(o)return o}throw new Error(`\\u4EC5\\u652F\\u6301${E.map(e=>e.name).join("\\u3001")}\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\uFF1B\\u8BF7\\u52FF\\u4F7F\\u7528\\u7AE0\\u8282\\u6216\\u641C\\u7D22\\u9875\\u94FE\\u63A5\\u3002`)}function U(t,r,e){let o=$(r.provider),n=M(o.identities(t,r,_),r),i=o.parse(t,r,_),a={...i,...r,fetched_at:new Date().toISOString(),acquisition:e,evidence:{identity:n,...i.evidence}};if(!a.title||a.authors.length===0)throw new Error("\\u672A\\u8BC6\\u522B\\u5230\\u53EF\\u9760\\u7684\\u4E66\\u540D\\u548C\\u4F5C\\u8005\\u3002\\u9875\\u9762\\u53EF\\u80FD\\u662F\\u9A8C\\u8BC1\\u9875\\u3001\\u767B\\u5F55\\u9875\\u6216\\u7ED3\\u6784\\u5DF2\\u53D8\\u5316\\uFF1B\\u8BF7\\u5728\\u6D4F\\u89C8\\u5668\\u786E\\u8BA4\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\uFF0C\\u6216\\u4F7F\\u7528\\u624B\\u52A8\\u5EFA\\u6863\\u3002");return a.cover_url||a.warnings.push("\\u672A\\u63D0\\u53D6\\u5230\\u53EF\\u7528\\u5C01\\u9762\\u5730\\u5740\\uFF0C\\u53EF\\u7A0D\\u540E\\u624B\\u52A8\\u8865\\u5145\\u3002"),a.description||a.warnings.push("\\u672A\\u63D0\\u53D6\\u5230\\u4F5C\\u54C1\\u7B80\\u4ECB\\uFF0C\\u53EF\\u7A0D\\u540E\\u624B\\u52A8\\u8865\\u5145\\u3002"),!a.first_published_year&&!a.first_published_at&&a.warnings.push("\\u672A\\u83B7\\u5F97\\u660E\\u786E\\u7684\\u9996\\u53D1\\u65E5\\u671F\\uFF0C\\u9996\\u53D1\\u5E74\\u4EFD\\u7559\\u7A7A\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6700\\u8FD1\\u66F4\\u65B0\\u65F6\\u95F4\\u63A8\\u65AD\\u5E74\\u4EFD\\u3002"),a}function te(t){return JSON.stringify({format:"webnovel-import-capture",version:1,metadata:t})}function B(t,r){let e;try{e=new URL(r)}catch{return!1}if(e.protocol!=="https:"||e.username||e.password||e.port)return!1;switch(t){case"qidian":return e.hostname==="www.qidian.com"&&e.pathname.startsWith("/so/");case"fanqie":return e.hostname==="fanqienovel.com"&&(e.pathname.startsWith("/search/")||e.pathname==="/");case"qimao":return e.hostname==="www.qimao.com"&&/^\\/search\\/index\\/?$/.test(e.pathname);case"jjwxc":return["my.jjwxc.net","www.jjwxc.net"].includes(e.hostname)&&e.pathname==="/search.php"}}var D=t=>`${t.provider}:${t.id}`;var re=Symbol.for("webnovel-import.search-result-handler");function oe(t,r){try{let e=_(new URL(r,location.href).href);if(e.provider===t)return e.url}catch{}}function ne(t,r){if(B(t,location.href)){if(t==="jjwxc"){let e=document.querySelector("form#formleft"),o=e?.querySelector(\'input#autoComplete[name="kw"]\');e&&o&&(e.target="_self",o.value||(o.value=r))}if(!Reflect.get(window,re)){if(Reflect.set(window,re,!0),t==="fanqie"){let e=window.open.bind(window);window.open=(o,n,i)=>{let a=o&&navigator.userActivation?.isActive&&B(t,location.href)?oe(t,o):void 0;return a?(location.assign(a),null):e(o,n,i)}}window.addEventListener("click",e=>{if(!e.isTrusted||e.button!==0||!B(t,location.href))return;let o=e.target instanceof Element?e.target.closest("a[href]"):null;if(!o)return;let n=oe(t,o.href);n&&(e.preventDefault(),e.stopImmediatePropagation(),location.assign(n))},{capture:!0})}}}function ie(t){try{let r=_(location.href);if(D(r)!==D(_(t)))throw new Error("\\u4F5C\\u54C1\\u9875\\u5DF2\\u5207\\u6362\\uFF0C\\u8BF7\\u91CD\\u65B0\\u9009\\u4E2D\\u4F5C\\u54C1\\u3002");return{metadata:U(document,r,"browser")}}catch(r){return{error:r instanceof Error?r.message:"\\u4F5C\\u54C1\\u8D44\\u6599\\u6682\\u65F6\\u65E0\\u6CD5\\u8BFB\\u53D6\\u3002"}}}async function ge(t){try{let r=_(location.href);if(!$(r.provider).browserCapture)throw new Error("\\u6B64\\u5E73\\u53F0\\u53EF\\u4ECE Obsidian \\u7684\\u94FE\\u63A5\\u6216 HTML \\u5165\\u53E3\\u5BFC\\u5165\\u3002");let o=U(document,r,"browser"),n=te(o);try{await navigator.clipboard.writeText(n)}catch{if(window.prompt("\\u6D4F\\u89C8\\u5668\\u672A\\u5141\\u8BB8\\u76F4\\u63A5\\u590D\\u5236\\u3002\\u8BF7\\u590D\\u5236\\u4E0B\\u65B9\\u5B8C\\u6574\\u8D44\\u6599\\uFF0C\\u518D\\u6309\\u786E\\u5B9A\\u8FD4\\u56DE Obsidian\\uFF1B\\u53D6\\u6D88\\u5219\\u505C\\u6B62\\u3002",n)===null)return}let i=new URLSearchParams({vault:t,clipboard:"1",provider:r.provider,id:r.id,capturedAt:o.fetched_at}).toString().replace(/\\+/g,"%20");location.assign(`obsidian://webnovel-import?${i}`)}catch(r){window.alert(`\\u7F51\\u6587\\u8D44\\u6599\\u5C1A\\u672A\\u91C7\\u96C6\\uFF1A${r instanceof Error?r.message:String(r)}`)}}return pe(we);})();\n';
+}
 function makeBookmarklet(vault) {
-  const script = `void(function(){${'"use strict";var WebnovelBrowser=(()=>{var U=Object.defineProperty;var ee=Object.getOwnPropertyDescriptor;var te=Object.getOwnPropertyNames;var oe=Object.prototype.hasOwnProperty;var re=(t,o)=>{for(var e in o)U(t,e,{get:o[e],enumerable:!0})},ne=(t,o,e,r)=>{if(o&&typeof o=="object"||typeof o=="function")for(let n of te(o))!oe.call(t,n)&&n!==e&&U(t,n,{get:()=>o[n],enumerable:!(r=ee(o,n))||r.enumerable});return t};var ie=t=>ne(U({},"__esModule",{value:!0}),t);var ue={};re(ue,{capture:()=>pe});var d=t=>t?.replace(/\\u00a0/g," ").replace(/[\\t ]+/g," ").trim()||void 0;function c(t,o){return d(t.querySelector(o)?.textContent)}function b(t,o){let e=t.querySelector(o);if(!e)return;let r=e.cloneNode(!0);return r.querySelectorAll("br").forEach(n=>n.replaceWith(`\n`)),r.querySelectorAll("script, style").forEach(n=>n.remove()),d(r.textContent?.replace(/\\r\\n?/g,`\n`).replace(/[\\t ]*\\n[\\t ]*/g,`\n`))}function l(t,o){return d(t.querySelector(`meta[property="${o}"], meta[name="${o}"]`)?.getAttribute("content"))}function m(t,o){if(t?.trim())try{let e=new URL(t.trim(),o);return["http:","https:"].includes(e.protocol)&&!e.username&&!e.password?e.href:void 0}catch{return}}function h(t){if(t){if(/\u5B8C\u7ED3|\u5B8C\u672C|\u5DF2\u5B8C\u6210/.test(t))return"completed";if(/\u6682\u505C|\u505C\u66F4|\u65AD\u66F4/.test(t))return"paused";if(/\u8FDE\u8F7D/.test(t))return"ongoing"}}function _(t,o,e){let r=[],n=(i,a)=>{if(i)try{r.push({book:e(new URL(i,o.url).href),evidence:a})}catch{}};n(t.querySelector(\'link[rel="canonical"]\')?.getAttribute("href"),\'link[rel="canonical"]\');for(let i of["og:url","og:novel:book_url","og:novel:read_url"])n(l(t,i),`meta ${i}`);return{identities:r,addUrl:n}}function L(t,o){if(!t.length)throw new Error("\\u672A\\u8BC6\\u522B\\u5230\\u53EF\\u6838\\u5BF9\\u7684\\u4F5C\\u54C1\\u6807\\u8BC6\\uFF0C\\u4E0D\\u80FD\\u5C06\\u9875\\u9762\\u8D44\\u6599\\u7ED1\\u5B9A\\u5230\\u8F93\\u5165\\u94FE\\u63A5\\uFF1B\\u8BF7\\u63D0\\u4F9B\\u5B8C\\u6574\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u6216\\u4F7F\\u7528\\u624B\\u52A8\\u5EFA\\u6863\\u3002");for(let{book:e}of t)if(e.provider!==o.provider||e.id!==o.id)throw new Error("\\u9875\\u9762\\u6807\\u8BC6\\u4E0E\\u8F93\\u5165\\u7684\\u4F5C\\u54C1\\u94FE\\u63A5\\u4E0D\\u4E00\\u81F4\\uFF0C\\u8BF7\\u6838\\u5BF9\\u94FE\\u63A5\\u548C HTML \\u6587\\u4EF6\\u3002");return t.map(e=>e.evidence).join("\\uFF1B")}var T={provider:"qidian",name:"\\u8D77\\u70B9\\u4E2D\\u6587\\u7F51",recoveryHint:"\\u8BF7\\u6B63\\u5E38\\u6253\\u5F00\\u4F5C\\u54C1\\u9875\\uFF0C\\u4F7F\\u7528\\u8BBE\\u7F6E\\u4E2D\\u7684\\u6D4F\\u89C8\\u5668\\u91C7\\u96C6\\u4E66\\u7B7E\\uFF0C\\u6216\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\u3002",browserCapture:!0,matchUrl(t){let e=(t.hostname==="book.qidian.com"?/^\\/info\\/(\\d+)\\/?$/:["www.qidian.com","m.qidian.com"].includes(t.hostname)?/^\\/book\\/(\\d+)\\/?$/:void 0)?.exec(t.pathname)?.[1];return e?{provider:"qidian",id:e,url:`https://www.qidian.com/book/${e}/`}:void 0},identities(t,o,e){let{identities:r}=_(t,o,e),n=t.querySelector("#book-detail #bookImg")?.getAttribute("data-bid");return n&&/^\\d+$/.test(n)&&r.push({book:{...o,id:n},evidence:"#book-detail #bookImg[data-bid]"}),r},parse(t,o){let e={title:"",authors:[],evidence:{},warnings:[]},r=t.querySelector("#book-detail .book-info-top"),n=r?c(r,"#bookName"):void 0,i=r?d(c(r,".book-meta .author")?.replace(/^\u4F5C\u8005\\s*[\uFF1A:]\\s*/,"")):void 0;e.title=n||l(t,"og:novel:book_name")||"";let a=i||l(t,"og:novel:author");a&&(e.authors=[a]);let p=b(t,"#book-intro-detail");e.description=p||l(t,"og:novel:description")||l(t,"og:description");let s=t.querySelector("#book-detail #bookImg"),u=s?.getAttribute("data-bid")===o.id?m(s.querySelector("img")?.getAttribute("src"),o.url):void 0;e.cover_url=u||m(l(t,"og:image"),o.url);let v=r?Array.from(r.querySelectorAll(".book-attribute a")).map(w=>d(w.textContent)).filter(w=>!!w):[],R=l(t,"og:novel:category");v.length?e.tags=[...new Set(v)]:R&&(e.tags=[R]);let f=r?Array.from(r.querySelectorAll(".book-attribute span")).map(w=>h(d(w.textContent))).find(w=>w!==void 0):void 0;e.serialization_status=f||h(l(t,"og:novel:status"));let y=(r?Array.from(r.querySelectorAll(".count cite")).find(w=>d(w.textContent)==="\\u5B57"):void 0)?.previousElementSibling,D=y?.tagName.toLowerCase()==="em"&&d(y.textContent)?`${d(y.textContent)}\\u5B57`:void 0;e.word_count_text=D||l(t,"og:novel:word_count");let j=r?d(c(r,".book-meta .update-time")?.replace(/^\u66F4\u65B0\u65F6\u95F4\\s*[\uFF1A:]\\s*/,"")):void 0,E=r?d(c(r,".book-latest-chapter")?.replace(/^\u6700\u65B0\u7AE0\u8282\\s*[\uFF1A:]\\s*/,"")):void 0;return e.last_updated_at=j||l(t,"og:novel:update_time"),e.latest_chapter=E||l(t,"og:novel:latest_chapter_name"),e.evidence.title=n?"#book-detail .book-info-top #bookName":"meta og:novel:book_name",e.evidence.authors=i?"#book-detail .book-info-top .book-meta .author":"meta og:novel:author",e.description&&(e.evidence.description=p?"#book-intro-detail\\uFF1B\\u4FDD\\u7559br\\u6362\\u884C":"meta og:novel:description / og:description"),e.cover_url&&(e.evidence.cover_url=u?"#book-detail #bookImg[data-bid\\u4E0E\\u4F5C\\u54C1ID\\u4E00\\u81F4] img[src]":"meta og:image"),e.tags&&(e.evidence.tags=v.length?"#book-detail .book-info-top .book-attribute a":"meta og:novel:category"),e.serialization_status&&(e.evidence.serialization_status=f?"#book-detail .book-info-top .book-attribute span":"meta og:novel:status"),e.word_count_text&&(e.evidence.word_count_text=D?"#book-detail .book-info-top .count\\uFF1B\\u4EC5\\u53D6\\u5B57\\u6570\\uFF0C\\u4FDD\\u7559\\u663E\\u793A\\u7CBE\\u5EA6":"meta og:novel:word_count"),e.last_updated_at&&(e.evidence.last_updated_at=j?"#book-detail .book-info-top .update-time\\uFF1B\\u975E\\u9996\\u53D1\\u65E5\\u671F":"meta og:novel:update_time\\uFF1B\\u975E\\u9996\\u53D1\\u65E5\\u671F"),e.latest_chapter&&(e.evidence.latest_chapter=E?"#book-detail .book-info-top .book-latest-chapter":"meta og:novel:latest_chapter_name"),e}};function ae(t,o,e){for(let n of Array.from(t.querySelectorAll(\'script[type="application/ld+json"]\'))){let i;try{let u=JSON.parse(n.textContent||"");if(!u||typeof u!="object"||Array.isArray(u))continue;i=u}catch{continue}if(typeof i["@id"]!="string")continue;let a;try{a=e(i["@id"])}catch{continue}if(a.provider!==o.provider||a.id!==o.id)continue;let p=i.images??i.image,s=Array.isArray(p)?p:[p];for(let u of s){if(typeof u!="string")continue;let v=m(u,o.url);if(v)return{url:v,evidence:"\\u4F5C\\u54C1\\u9875 JSON-LD images/image\\uFF0C@id \\u4E0E\\u4F5C\\u54C1\\u94FE\\u63A5\\u4E00\\u81F4"}}}let r=m(t.querySelector(".page-header-info .book-cover-img")?.getAttribute("src"),o.url);if(!(!r||new URL(r).pathname.includes("/novel-static/5cb03bd354145bc7815a5e09d4b15cfc")))return{url:r,evidence:"\\u4F5C\\u54C1\\u9875 .page-header-info .book-cover-img[src]\\uFF0C\\u5DF2\\u6392\\u9664\\u5DF2\\u77E5\\u52A0\\u8F7D\\u5360\\u4F4D\\u56FE"}}var z={provider:"fanqie",name:"\\u756A\\u8304\\u5C0F\\u8BF4",recoveryHint:"\\u53EF\\u5728\\u6D4F\\u89C8\\u5668\\u6B63\\u5E38\\u6253\\u5F00\\u540E\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\uFF0C\\u6216\\u624B\\u52A8\\u8865\\u586B\\u3002",matchUrl(t){let o=t.hostname==="fanqienovel.com"?/^\\/page\\/(\\d+)\\/?$/.exec(t.pathname)?.[1]:void 0;return o?{provider:"fanqie",id:o,url:`https://fanqienovel.com/page/${o}`}:void 0},identities(t,o,e){let{identities:r,addUrl:n}=_(t,o,e);if(!r.length)for(let i of Array.from(t.querySelectorAll(\'script[type="application/ld+json"]\'))){let a;try{a=JSON.parse(i.textContent||"")}catch{continue}let p=Array.isArray(a)?a:[a];for(let s of p)s&&typeof s=="object"&&typeof s["@id"]=="string"&&n(s["@id"],"\\u4F5C\\u54C1\\u9875 JSON-LD \\u9876\\u5C42 @id")}return r},parse(t,o,e){let r={title:"",authors:[],evidence:{},warnings:[]},n=t.querySelector(".page-header-info");r.title=n&&c(n,".info-name h1")||"";let i=n&&c(n,".author-name-text");i&&(r.authors=[i]);let a=ae(t,o,e);return a&&(r.cover_url=a.url,r.evidence.cover_url=a.evidence),n&&(r.tags=Array.from(n.querySelectorAll(".info-label-grey")).map(p=>d(p.textContent)).filter(p=>!!p),r.serialization_status=h(c(n,".info-label-yellow")),r.word_count_text=c(n,".info-count-word")?.replace(/\\s/g,""),r.last_updated_at=c(n,".info-last-time"),r.latest_chapter=c(n,".info-last-title")?.replace(/^\u6700\u8FD1\u66F4\u65B0\\s*[\uFF1A:]\\s*/,"")),r.description=c(t,".page-body .page-abstract-content"),r.evidence.title="\\u4F5C\\u54C1\\u9875 .page-header-info .info-name h1",r.evidence.authors="\\u4F5C\\u54C1\\u9875 .page-header-info .author-name-text",r.description&&(r.evidence.description="\\u4F5C\\u54C1\\u9875 .page-body .page-abstract-content"),r.tags?.length&&(r.evidence.tags="\\u4F5C\\u54C1\\u9875 .page-header-info .info-label-grey"),r.serialization_status&&(r.evidence.serialization_status="\\u4F5C\\u54C1\\u9875 .info-label-yellow"),r.word_count_text&&(r.evidence.word_count_text="\\u4F5C\\u54C1\\u9875 .info-count-word\\uFF1B\\u4FDD\\u7559\\u7F51\\u7AD9\\u663E\\u793A\\u7CBE\\u5EA6"),r.last_updated_at&&(r.evidence.last_updated_at="\\u4F5C\\u54C1\\u9875 .info-last-time\\uFF1B\\u5E73\\u53F0\\u539F\\u59CB\\u663E\\u793A\\u65F6\\u95F4\\uFF0C\\u975E\\u9996\\u53D1\\u65E5\\u671F"),r.latest_chapter&&(r.evidence.latest_chapter="\\u4F5C\\u54C1\\u9875 .info-last-title"),r}};var g=".book-information",I=".wrap-txt > .title > .txt",M=".sub-title .txt",$=".update-info .update-chapter-title a",N=".update-info .update-time",F=".book-introduction .intro",O={provider:"qimao",name:"\\u4E03\\u732B\\u4E2D\\u6587\\u7F51",recoveryHint:"\\u8BF7\\u6B63\\u5E38\\u6253\\u5F00\\u4F5C\\u54C1\\u9875\\uFF0C\\u4F7F\\u7528\\u6D4F\\u89C8\\u5668\\u91C7\\u96C6\\u4E66\\u7B7E\\uFF0C\\u6216\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\u3002",browserCapture:!0,matchUrl(t){let o=t.hostname==="www.qimao.com"?/^\\/shuku\\/(\\d+)\\/?$/.exec(t.pathname)?.[1]:void 0;return o?{provider:"qimao",id:o,url:`https://www.qimao.com/shuku/${o}/`}:void 0},identities(t,o,e){let{identities:r,addUrl:n}=_(t,o,e),i=t.querySelector(`${g} ${$}`)?.getAttribute("href");if(i)try{let a=new URL(i,o.url),p=/^\\/shuku\\/(\\d+)-\\d+\\/?$/.exec(a.pathname);p&&(a.pathname=`/shuku/${p[1]}/`,n(a.href,`${g} ${$}[href] \\u7684\\u4F5C\\u54C1 ID`))}catch{}return r},parse(t,o){let e={title:"",authors:[],evidence:{},warnings:[]},r=t.querySelector(g);if(!r)return e;e.title=c(r,I)||"";let n=Array.from(r.querySelectorAll(M)).find(s=>/^\u4F5C\u8005\\s*[\uFF1A:]/.test(d(s.textContent)??"")),i=n&&c(n,"em a");i&&(e.authors=[i]),e.description=b(t,F);let a=m(r.querySelector(".wrap-pic > img")?.getAttribute("src"),o.url);a&&/^https?:\\/\\/cdn\\.qimao\\.com\\/bookimg\\/[^?#]*\\/readerCover\\//.test(a)&&(e.cover_url=a);let p=Array.from(r.querySelectorAll(\'.tags-wrap a[href*="/shuku/a-"]\')).map(s=>d(s.textContent)).filter(s=>!!s);return p.length&&(e.tags=[...new Set(p)]),e.serialization_status=Array.from(r.querySelectorAll(".tags-wrap > .qm-tag")).map(s=>h(d(s.textContent))).find(s=>s!==void 0),e.word_count_text=Array.from(r.querySelectorAll(".statistics-wrap > .txt")).map(s=>d(s.textContent)?.replace(/\\s/g,"")).find(s=>s&&/^\\d[\\d,.]*(?:\u4E07|\u4EBF)?\u5B57$/.test(s)),e.last_updated_at=c(r,N),e.latest_chapter=c(r,$),e.evidence.title=`${g} ${I}`,e.evidence.authors=`${g} ${M}\\uFF08\\u4F5C\\u8005\\u6807\\u7B7E\\uFF09 em a`,e.description&&(e.evidence.description=F),e.cover_url&&(e.evidence.cover_url=`${g} .wrap-pic > img[src]\\uFF0C\\u4F5C\\u54C1\\u5C01\\u9762\\u8DEF\\u5F84`),e.tags&&(e.evidence.tags=`${g} .tags-wrap \\u5185\\u4E66\\u5E93\\u5206\\u7C7B\\u94FE\\u63A5`),e.serialization_status&&(e.evidence.serialization_status=`${g} .tags-wrap > .qm-tag`),e.word_count_text&&(e.evidence.word_count_text=`${g} .statistics-wrap > .txt\\uFF08\\u5B57\\u6570\\uFF09`),e.last_updated_at&&(e.evidence.last_updated_at=`${g} ${N}\\uFF08\\u6700\\u65B0\\u7AE0\\u8282\\u65F6\\u95F4\\uFF09`),e.latest_chapter&&(e.evidence.latest_chapter=`${g} ${$}`),e}};var P=\'td.readtd a[href*="m.jjwxc.net/book2/"]\',x="body > div.b.module > h2.big > span.uninterested-author[data-novelid]",S="#info #left",H=\'td.sptd h1[itemprop="name"] [itemprop="articleSection"]\',W=\'td.sptd h2 [itemprop="author"]\',G=\'tr[itemprop~="newestChapter"]\',J=`${G} [itemprop="headline"] a[itemprop="url"]`,V=`${G} td[title*="\\u7AE0\\u8282\\u9996\\u53D1\\u65F6\\u95F4"]`,K=\'img.noveldefaultimage[itemprop="image"]\';function B(t){return t&&/^\\d{4}-\\d{2}-\\d{2}(?: \\d{2}:\\d{2}:\\d{2})?$/.test(t)?t:void 0}function se(t,o){let e=t.querySelector(K),r=m(e?.getAttribute("src"),o.url),n=m(e?.getAttribute("_src"),o.url);if(!r||!n||r===n)return;let i=new URL(n),a=new URL(r);if(!(!/^i\\d+-static\\.jjwxc\\.net$/.test(i.hostname)||i.pathname!=="/novelimage.php"||i.searchParams.get("novelid")!==o.id||!/^i\\d+-static\\.jjwxc\\.net$/.test(a.hostname))&&(a.pathname==="/authorimagespace.php"||a.pathname.startsWith("/tmp/backend/authorspace/")))return r}function Q(t,o,e,r){let n=[o,...Array.from(e,i=>d(i.textContent))].filter(i=>!!i);n.length&&(t.tags=[...new Set(n)],t.evidence.tags=r)}function ce(t,o,e){let r=\'#novelintro[itemprop="description"]\',n=".smallreadbody",i=\'body > meta[itemprop="dateModified"]\';e.title=c(t,H)||"";let a=c(t,W);a&&(e.authors=[a]),e.cover_url=se(t,o),e.description=b(t,r),e.serialization_status=h(c(t,\'[itemprop="updataStatus"]\')),e.word_count_text=c(t,\'[itemprop="wordCount"]\'),e.latest_chapter=c(t,J);let p=e.latest_chapter&&B(c(t,V)?.replace(/\\s*\\*\u6700\u65B0\u66F4\u65B0$/,""));e.last_updated_at=p||B(d(t.querySelector(i)?.getAttribute("content"))),Q(e,c(t,\'[itemprop="genre"]\'),t.querySelectorAll(`${n} a[href*="bookbase.php?bq="]`),"\\u4F5C\\u54C1\\u9875 [itemprop=genre] \\u53CA .smallreadbody \\u5185\\u5BB9\\u6807\\u7B7E\\u94FE\\u63A5"),e.evidence.title=H,e.evidence.authors=W,e.cover_url&&(e.evidence.cover_url=`${K}[src]\\uFF0C\\u6709\\u522B\\u4E8E\\u672C\\u4E66\\u9ED8\\u8BA4\\u5C01\\u9762 _src`),e.description&&(e.evidence.description=r),e.serialization_status&&(e.evidence.serialization_status="\\u4F5C\\u54C1\\u9875 [itemprop=updataStatus]"),e.word_count_text&&(e.evidence.word_count_text="\\u4F5C\\u54C1\\u9875 [itemprop=wordCount]"),e.latest_chapter&&(e.evidence.latest_chapter=J),e.last_updated_at&&(e.evidence.last_updated_at=p?`${V} \\u7684\\u53EF\\u89C1\\u66F4\\u65B0\\u65F6\\u95F4`:`${i}[content]\\uFF08\\u4F5C\\u54C1\\u66F4\\u65B0\\u65F6\\u95F4\\uFF09`)}function de(t,o,e){let r=`${S} .authorname-content > a[href^="/wapauthor/"]`,n="li#novelintro",i=`${n} #novelintro_whole`,a=Array.from(t.querySelectorAll(`${S} > li`)),p=f=>a.map(k=>d(k.textContent)).find(k=>k?.startsWith(`${f}\\uFF1A`))?.slice(f.length+1).trim();e.title=d(o.getAttribute("data-novelname"))||"";let s=c(t,r),u=s||d(o.getAttribute("data-authorname"));if(u&&(e.authors=[u]),e.description=b(t,i),e.description)e.evidence.description=i;else if(!t.querySelector(i)){let f=t.querySelector(n)?.childNodes,k=Array.from(f??[],y=>y.nodeType===3?y.textContent?.replace(/\\s+/g," "):y.nodeName==="BR"?`\n`:"").join("");e.description=d(k.replace(/^\\s*\u7B80\u4ECB\\s*[\uFF1A:]\\s*/,"").replace(/ *\\n */g,`\n`)),e.description&&(e.evidence.description=`${n} \\u7684\\u76F4\\u63A5\\u6587\\u672C\\u4E0E br`)}let v=p("\\u72B6\\u6001");e.serialization_status=h(v),e.word_count_text=v?.split("/").map(f=>f.trim()).find(f=>/^\\d+\u5B57$/.test(f));let R=t.querySelector(\'meta[name="description"]\')?.getAttribute("content");e.last_updated_at=B(R?.match(/\\|\u6700\u65B0\u66F4\u65B0\\s*[\uFF1A:]\\s*([^|]+)\\|/)?.[1].trim()),Q(e,p("\\u7C7B\\u578B"),t.querySelectorAll(`${S} > li a[href^="/assort/"]`),"\\u79FB\\u52A8\\u4F5C\\u54C1\\u9875\\u7C7B\\u578B\\u53CA\\u5185\\u5BB9\\u6807\\u7B7E\\u94FE\\u63A5"),e.evidence.title=`${x}[data-novelname]`,e.evidence.authors=s?r:`${x}[data-authorname]`,e.serialization_status&&(e.evidence.serialization_status=`${S} \\u72B6\\u6001`),e.word_count_text&&(e.evidence.word_count_text=`${S} \\u72B6\\u6001\\u4E2D\\u7684\\u5B57\\u6570`),e.last_updated_at&&(e.evidence.last_updated_at=\'meta[name="description"] \\u7684\\u6700\\u65B0\\u66F4\\u65B0\\uFF08\\u4F5C\\u54C1\\u66F4\\u65B0\\u65F6\\u95F4\\uFF09\')}var X={provider:"jjwxc",name:"\\u664B\\u6C5F\\u6587\\u5B66\\u57CE",recoveryHint:"\\u8BF7\\u6B63\\u5E38\\u6253\\u5F00\\u684C\\u9762\\u6216\\u79FB\\u52A8\\u4F5C\\u54C1\\u9875\\uFF0C\\u4F7F\\u7528\\u6D4F\\u89C8\\u5668\\u91C7\\u96C6\\u4E66\\u7B7E\\uFF0C\\u6216\\u9009\\u62E9\\u53E6\\u5B58\\u7684 HTML \\u6587\\u4EF6\\u3002",browserCapture:!0,matchUrl(t){let o;if(t.hostname==="www.jjwxc.net"&&t.pathname==="/onebook.php"&&!t.searchParams.has("chapterid")){let e=t.searchParams.getAll("novelid");e.length===1&&/^\\d+$/.test(e[0])&&(o=e[0])}return t.hostname==="m.jjwxc.net"&&(o=/^\\/book2\\/(\\d+)\\/?$/.exec(t.pathname)?.[1]),o?{provider:"jjwxc",id:o,url:`https://www.jjwxc.net/onebook.php?novelid=${o}`}:void 0},identities(t,o,e){let{identities:r,addUrl:n}=_(t,o,e);n(t.querySelector(P)?.getAttribute("href"),`${P}[href]`);let i=t.querySelector(x)?.getAttribute("data-novelid");return i&&/^\\d+$/.test(i)&&r.push({book:{...o,id:i},evidence:`${x}[data-novelid]`}),r},parse(t,o){let e={title:"",authors:[],evidence:{},warnings:[]},r=t.querySelector(x);return r?de(t,r,e):ce(t,o,e),e}};var C=[T,z,O,X];function q(t){let o=C.find(e=>e.provider===t);if(!o)throw new Error(`\\u4E0D\\u652F\\u6301\\u7684\\u4F5C\\u54C1\\u6765\\u6E90\\uFF1A${t}`);return o}function A(t){let o;try{o=new URL(t.trim())}catch{throw new Error("\\u8BF7\\u8F93\\u5165\\u5B8C\\u6574\\u7684\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\u94FE\\u63A5\\u3002")}if(!["https:","http:"].includes(o.protocol)||o.username||o.password||o.port)throw new Error("\\u4F5C\\u54C1\\u94FE\\u63A5\\u5FC5\\u987B\\u662F\\u666E\\u901A\\u7684 HTTP \\u6216 HTTPS \\u5B98\\u7F51\\u94FE\\u63A5\\u3002");for(let e of C){let r=e.matchUrl(o);if(r)return r}throw new Error(`\\u4EC5\\u652F\\u6301${C.map(e=>e.name).join("\\u3001")}\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\uFF1B\\u8BF7\\u52FF\\u4F7F\\u7528\\u7AE0\\u8282\\u6216\\u641C\\u7D22\\u9875\\u94FE\\u63A5\\u3002`)}function Y(t,o,e){let r=q(o.provider),n=L(r.identities(t,o,A),o),i=r.parse(t,o,A),a={...i,...o,fetched_at:new Date().toISOString(),acquisition:e,evidence:{identity:n,...i.evidence}};if(!a.title||a.authors.length===0)throw new Error("\\u672A\\u8BC6\\u522B\\u5230\\u53EF\\u9760\\u7684\\u4E66\\u540D\\u548C\\u4F5C\\u8005\\u3002\\u9875\\u9762\\u53EF\\u80FD\\u662F\\u9A8C\\u8BC1\\u9875\\u3001\\u767B\\u5F55\\u9875\\u6216\\u7ED3\\u6784\\u5DF2\\u53D8\\u5316\\uFF1B\\u8BF7\\u5728\\u6D4F\\u89C8\\u5668\\u786E\\u8BA4\\u4F5C\\u54C1\\u8BE6\\u60C5\\u9875\\uFF0C\\u6216\\u4F7F\\u7528\\u624B\\u52A8\\u5EFA\\u6863\\u3002");return a.cover_url||a.warnings.push("\\u672A\\u63D0\\u53D6\\u5230\\u53EF\\u7528\\u5C01\\u9762\\u5730\\u5740\\uFF0C\\u53EF\\u7A0D\\u540E\\u624B\\u52A8\\u8865\\u5145\\u3002"),a.description||a.warnings.push("\\u672A\\u63D0\\u53D6\\u5230\\u4F5C\\u54C1\\u7B80\\u4ECB\\uFF0C\\u53EF\\u7A0D\\u540E\\u624B\\u52A8\\u8865\\u5145\\u3002"),!a.first_published_year&&!a.first_published_at&&a.warnings.push("\\u672A\\u83B7\\u5F97\\u660E\\u786E\\u7684\\u9996\\u53D1\\u65E5\\u671F\\uFF0C\\u9996\\u53D1\\u5E74\\u4EFD\\u7559\\u7A7A\\uFF1B\\u4E0D\\u4F1A\\u7528\\u6700\\u8FD1\\u66F4\\u65B0\\u65F6\\u95F4\\u63A8\\u65AD\\u5E74\\u4EFD\\u3002"),a}function Z(t){return JSON.stringify({format:"webnovel-import-capture",version:1,metadata:t})}async function pe(t){try{let o=A(location.href);if(!q(o.provider).browserCapture)throw new Error("\\u6B64\\u5E73\\u53F0\\u53EF\\u4ECE Obsidian \\u7684\\u94FE\\u63A5\\u6216 HTML \\u5165\\u53E3\\u5BFC\\u5165\\u3002");let r=Y(document,o,"browser"),n=Z(r);try{await navigator.clipboard.writeText(n)}catch{if(window.prompt("\\u6D4F\\u89C8\\u5668\\u672A\\u5141\\u8BB8\\u76F4\\u63A5\\u590D\\u5236\\u3002\\u8BF7\\u590D\\u5236\\u4E0B\\u65B9\\u5B8C\\u6574\\u8D44\\u6599\\uFF0C\\u518D\\u6309\\u786E\\u5B9A\\u8FD4\\u56DE Obsidian\\uFF1B\\u53D6\\u6D88\\u5219\\u505C\\u6B62\\u3002",n)===null)return}let i=new URLSearchParams({vault:t,clipboard:"1",provider:o.provider,id:o.id,capturedAt:r.fetched_at}).toString().replace(/\\+/g,"%20");location.assign(`obsidian://webnovel-import?${i}`)}catch(o){window.alert(`\\u7F51\\u6587\\u8D44\\u6599\\u5C1A\\u672A\\u91C7\\u96C6\\uFF1A${o instanceof Error?o.message:String(o)}`)}}return ie(ue);})();\n'};WebnovelBrowser.capture(${JSON.stringify(vault)});})()`;
+  const script = `void(function(){${browserCaptureBundle()};WebnovelBrowser.capture(${JSON.stringify(vault)});})()`;
   return `javascript:${encodeURIComponent(script)}`;
 }
 function parseCapturePayload(raw, expected) {
@@ -3065,19 +3068,28 @@ function parseCapturePayload(raw, expected) {
   if (packet?.format !== "webnovel-import-capture" || packet.version !== 1 || !packet.metadata) {
     throw new Error("\u672A\u8BC6\u522B\u7684\u6D4F\u89C8\u5668\u91C7\u96C6\u683C\u5F0F\uFF0C\u8BF7\u4F7F\u7528\u5F53\u524D\u7248\u672C\u63D0\u4F9B\u7684\u91C7\u96C6\u4E66\u7B7E\u3002");
   }
-  const value = packet.metadata;
-  const ref = parseBookUrl(typeof value.url === "string" ? value.url : "");
-  if (!getSourceAdapter(ref.provider).browserCapture || value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== "browser") {
+  const result = parseCapturedMetadata(packet.metadata);
+  if (!getSourceAdapter(result.provider).browserCapture) {
     throw new Error("\u91C7\u96C6\u8D44\u6599\u7684\u4F5C\u54C1\u6807\u8BC6\u4E0D\u4E00\u81F4\uFF0C\u6216\u8BE5\u5E73\u53F0\u6682\u4E0D\u652F\u6301\u4E66\u7B7E\u91C7\u96C6\u3002\u8BF7\u6838\u5BF9\u4F5C\u54C1\u8BE6\u60C5\u9875\u3002");
+  }
+  if (expected && (result.provider !== expected.provider || result.id !== expected.id || expected.capturedAt !== void 0 && result.fetched_at !== expected.capturedAt)) {
+    throw new Error("\u526A\u8D34\u677F\u5185\u5BB9\u4E0E\u521A\u91C7\u96C6\u7684\u8D44\u6599\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u91CD\u65B0\u70B9\u51FB\u8BE5\u4F5C\u54C1\u7684\u91C7\u96C6\u4E66\u7B7E\u3002");
+  }
+  result.evidence.acquisition = "\u7528\u6237\u5728\u6B63\u5E38\u663E\u793A\u7684\u4F5C\u54C1\u9875\u70B9\u51FB\u91C7\u96C6\u4E66\u7B7E\uFF0C\u7ECF\u672C\u673A\u526A\u8D34\u677F\u5BFC\u5165";
+  return result;
+}
+function parseCapturedMetadata(data, expected) {
+  if (!data || typeof data !== "object") throw new Error("\u6CA1\u6709\u6536\u5230\u53EF\u7528\u7684\u4F5C\u54C1\u8D44\u6599\u3002");
+  const value = data;
+  const ref = parseBookUrl(typeof value.url === "string" ? value.url : "");
+  if (value.provider !== ref.provider || value.id !== ref.id || value.acquisition !== "browser" || expected && (ref.provider !== expected.provider || ref.id !== expected.id)) {
+    throw new Error("\u91C7\u96C6\u8D44\u6599\u7684\u4F5C\u54C1\u6807\u8BC6\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u6838\u5BF9\u4F5C\u54C1\u8BE6\u60C5\u9875\u3002");
   }
   if (typeof value.title !== "string" || !value.title.trim() || !Array.isArray(value.authors) || !value.authors.length || !value.authors.every((s) => typeof s === "string" && s.trim())) {
     throw new Error("\u91C7\u96C6\u8D44\u6599\u7F3A\u5C11\u6709\u6548\u4E66\u540D\u6216\u4F5C\u8005\uFF0C\u8BF7\u7B49\u5F85\u4F5C\u54C1\u8BE6\u60C5\u9875\u6B63\u5E38\u663E\u793A\u540E\u91CD\u8BD5\u3002");
   }
   if (typeof value.fetched_at !== "string" || !Number.isFinite(Date.parse(value.fetched_at))) {
     throw new Error("\u91C7\u96C6\u8D44\u6599\u7F3A\u5C11\u6709\u6548\u83B7\u53D6\u65F6\u95F4\uFF0C\u8BF7\u91CD\u65B0\u91C7\u96C6\u3002");
-  }
-  if (expected && (ref.provider !== expected.provider || ref.id !== expected.id || expected.capturedAt !== void 0 && value.fetched_at !== expected.capturedAt)) {
-    throw new Error("\u526A\u8D34\u677F\u5185\u5BB9\u4E0E\u521A\u91C7\u96C6\u7684\u8D44\u6599\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u91CD\u65B0\u70B9\u51FB\u8BE5\u4F5C\u54C1\u7684\u91C7\u96C6\u4E66\u7B7E\u3002");
   }
   const result = {
     ...ref,
@@ -3099,14 +3111,13 @@ function parseCapturePayload(raw, expected) {
     result.cover_url = url.href;
   }
   if (Array.isArray(value.tags) && value.tags.every((s) => typeof s === "string")) result.tags = value.tags;
-  if (["ongoing", "completed", "paused", "unknown"].includes(value.serialization_status)) {
+  if (value.serialization_status === "ongoing" || value.serialization_status === "completed" || value.serialization_status === "paused" || value.serialization_status === "unknown") {
     result.serialization_status = value.serialization_status;
   }
   for (const key of ["identity", "title", "authors", "description", "cover_url", "tags", "serialization_status", "word_count_text", "last_updated_at", "latest_chapter"]) {
     const evidence = value.evidence?.[key];
     if (typeof evidence === "string") result.evidence[key] = evidence;
   }
-  result.evidence.acquisition = "\u7528\u6237\u5728\u6B63\u5E38\u663E\u793A\u7684\u4F5C\u54C1\u9875\u70B9\u51FB\u91C7\u96C6\u4E66\u7B7E\uFF0C\u7ECF\u672C\u673A\u526A\u8D34\u677F\u5BFC\u5165";
   result.warnings = [
     "\u6D4F\u89C8\u5668\u9875\u9762\u91C7\u96C6\uFF1B\u4E0D\u4EE3\u8868\u666E\u901A HTTP \u81EA\u52A8\u5237\u65B0\u5DF2\u53EF\u7528\u3002",
     "\u672A\u83B7\u5F97\u660E\u786E\u7684\u4F5C\u54C1\u9996\u53D1\u65E5\u671F\uFF0C\u9996\u53D1\u5E74\u4EFD\u7559\u7A7A\uFF1B\u4E0D\u4F1A\u7528\u6700\u8FD1\u66F4\u65B0\u65F6\u95F4\u6216\u7AE0\u8282\u65E5\u671F\u63A8\u65AD\u5E74\u4EFD\u3002"
@@ -3276,8 +3287,27 @@ var searchProviders = {
   qidian: { name: "\u8D77\u70B9\u4E2D\u6587\u7F51", hint: "\u6309\u4E66\u540D\u6216\u4F5C\u8005\u641C\u7D22\u3002" },
   fanqie: { name: "\u756A\u8304\u5C0F\u8BF4", hint: "\u6309\u4E66\u540D\u6216\u4F5C\u8005\u641C\u7D22\u3002" },
   qimao: { name: "\u4E03\u732B\u4E2D\u6587\u7F51", hint: "\u6309\u4E66\u540D\u3001\u4F5C\u8005\u6216\u4E3B\u89D2\u641C\u7D22\u3002" },
-  jjwxc: { name: "\u664B\u6C5F\u6587\u5B66\u57CE", hint: "\u5B98\u7F51\u4F1A\u751F\u6210\u52A8\u6001\u53C2\u6570\u3002\u7C98\u8D34\u5173\u952E\u8BCD\u540E\u9009\u62E9\u201C\u4F5C\u54C1\u201D\u6216\u201C\u4F5C\u8005\u201D\u3002" }
+  jjwxc: { name: "\u664B\u6C5F\u6587\u5B66\u57CE", hint: "\u6253\u5F00\u5B98\u7F51\u8868\u5355\u540E\u9009\u62E9\u201C\u4F5C\u54C1\u201D\u6216\u201C\u4F5C\u8005\u201D\uFF0C\u518D\u70B9\u641C\u7D22\u3002" }
 };
+function isOfficialSearchPage(provider, input) {
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
+  switch (provider) {
+    case "qidian":
+      return url.hostname === "www.qidian.com" && url.pathname.startsWith("/so/");
+    case "fanqie":
+      return url.hostname === "fanqienovel.com" && (url.pathname.startsWith("/search/") || url.pathname === "/");
+    case "qimao":
+      return url.hostname === "www.qimao.com" && /^\/search\/index\/?$/.test(url.pathname);
+    case "jjwxc":
+      return ["my.jjwxc.net", "www.jjwxc.net"].includes(url.hostname) && url.pathname === "/search.php";
+  }
+}
 function officialSearch(provider, input) {
   const keyword = input.trim();
   if (!keyword) throw new Error("\u8BF7\u8F93\u5165\u4E66\u540D\u6216\u4F5C\u8005\u5173\u952E\u8BCD\u3002");
@@ -3286,11 +3316,11 @@ function officialSearch(provider, input) {
     case "qidian":
       return { url: `https://www.qidian.com/so/${encoded}.html` };
     case "fanqie":
-      return keyword === "." || keyword === ".." ? { url: "https://fanqienovel.com/", copyKeyword: keyword } : { url: `https://fanqienovel.com/search/${encoded}` };
+      return keyword === "." || keyword === ".." ? { url: "https://fanqienovel.com/" } : { url: `https://fanqienovel.com/search/${encoded}` };
     case "qimao":
       return { url: `https://www.qimao.com/search/index/?keyword=${encoded}` };
     case "jjwxc":
-      return { url: "https://my.jjwxc.net/search.php", copyKeyword: keyword };
+      return { url: "https://my.jjwxc.net/search.php" };
   }
 }
 
@@ -3303,7 +3333,7 @@ var SearchModal = class extends import_obsidian4.Modal {
   onOpen() {
     this.contentEl.addClass("webnovel-import-modal");
     this.contentEl.createEl("h2", { text: "\u641C\u7D22\u7F51\u6587\u4F5C\u54C1" });
-    this.contentEl.createEl("p", { text: "\u8F93\u5165\u4E66\u540D\u6216\u4F5C\u8005\uFF0C\u6309\u9700\u6253\u5F00\u4E00\u4E2A\u5E73\u53F0\u7684\u5B98\u7F51\u641C\u7D22\u3002\u627E\u5230\u4F5C\u54C1\u540E\u8FDB\u5165\u8BE6\u60C5\u9875\u91C7\u96C6\u3002" });
+    this.contentEl.createEl("p", { text: "\u8F93\u5165\u4E66\u540D\u6216\u4F5C\u8005\uFF0C\u5728 Obsidian \u91CC\u6253\u5F00\u5B98\u7F51\u641C\u7D22\u3002\u70B9\u8FDB\u4F5C\u54C1\u5373\u53EF\u9884\u89C8\u5BFC\u5165\u3002" });
     new import_obsidian4.Setting(this.contentEl).setName("\u5173\u952E\u8BCD").addText((text2) => {
       text2.setPlaceholder("\u8F93\u5165\u4E66\u540D\u6216\u4F5C\u8005").setValue(this.plugin.searchKeyword).onChange((value) => {
         this.plugin.searchKeyword = value;
@@ -3319,23 +3349,14 @@ var SearchModal = class extends import_obsidian4.Modal {
         if (filter && filter !== provider) continue;
         const site = searchProviders[provider];
         new import_obsidian4.Setting(entries).setName(site.name).setDesc(site.hint).addButton((button) => {
-          button.setButtonText(provider === "jjwxc" ? "\u590D\u5236\u5173\u952E\u8BCD\u5E76\u6253\u5F00" : "\u6253\u5F00\u641C\u7D22").onClick(async () => {
-            try {
-              const search = officialSearch(provider, this.plugin.searchKeyword);
-              let guidance = "\u8BF7\u5728\u5B98\u7F51\u6253\u5F00\u76EE\u6807\u4F5C\u54C1\u7684\u8BE6\u60C5\u9875\u3002";
-              if (search.copyKeyword !== void 0) {
-                try {
-                  await navigator.clipboard.writeText(search.copyKeyword);
-                  guidance = "\u5DF2\u590D\u5236\u5173\u952E\u8BCD\uFF0C\u8BF7\u5728\u5B98\u7F51\u641C\u7D22\u6846\u7C98\u8D34\u3002";
-                } catch {
-                  guidance = "\u65E0\u6CD5\u8BBF\u95EE\u526A\u8D34\u677F\uFF0C\u8BF7\u4ECE\u5173\u952E\u8BCD\u8F93\u5165\u6846\u590D\u5236\uFF0C\u518D\u5230\u5B98\u7F51\u641C\u7D22\u3002";
-                }
-              }
-              window.open(search.url, "_blank", "noopener,noreferrer");
-              status2.setText(guidance);
-            } catch (error) {
-              status2.setText(error instanceof Error ? error.message : String(error));
+          button.setButtonText("\u5728 Obsidian \u641C\u7D22").onClick(() => {
+            const keyword = this.plugin.searchKeyword.trim();
+            if (!keyword) {
+              status2.setText("\u8BF7\u8F93\u5165\u4E66\u540D\u6216\u4F5C\u8005\u5173\u952E\u8BCD\u3002");
+              return;
             }
+            this.close();
+            this.plugin.openSearchBrowser(provider, keyword);
           });
         });
       }
@@ -3347,7 +3368,7 @@ var SearchModal = class extends import_obsidian4.Modal {
       dropdown.onChange(render);
     });
     render("");
-    new import_obsidian4.Setting(this.contentEl).setName("\u627E\u5230\u4F5C\u54C1\u540E").setDesc("\u8D77\u70B9\u3001\u4E03\u732B\u548C\u664B\u6C5F\u8BE6\u60C5\u9875\u53EF\u4F7F\u7528\u91C7\u96C6\u4E66\u7B7E\u76F4\u63A5\u8FD4\u56DE\u3002\u756A\u8304\u53EF\u4ECE\u8BE6\u60C5\u9875\u94FE\u63A5\u83B7\u53D6\uFF0C\u56DB\u7AD9\u5747\u53EF\u5C1D\u8BD5\u89E3\u6790\u5DF2\u4FDD\u5B58\u7684\u4F5C\u54C1\u9875 HTML\u3002").addButton((button) => button.setButtonText("\u590D\u5236\u91C7\u96C6\u4E66\u7B7E").onClick(() => void this.plugin.copyCaptureBookmarklet())).addButton((button) => button.setButtonText("\u4ECE\u94FE\u63A5\u5BFC\u5165").onClick(() => {
+    new import_obsidian4.Setting(this.contentEl).setName("\u5DF2\u6709\u4F5C\u54C1\u94FE\u63A5\uFF1F").addButton((button) => button.setButtonText("\u4ECE\u94FE\u63A5\u5BFC\u5165").onClick(() => {
       this.close();
       new SingleImportModal(this.plugin).open();
     }));
@@ -3361,8 +3382,216 @@ var SearchModal = class extends import_obsidian4.Modal {
   }
 };
 
+// src/search-browser.ts
+var import_obsidian5 = require("obsidian");
+
+// src/search-guest.ts
+function prepareSearchPageCode(provider, keyword) {
+  return `(() => {${browserCaptureBundle()};WebnovelBrowser.prepareSearchPage(${JSON.stringify(provider)}, ${JSON.stringify(keyword)});})()`;
+}
+function readSearchWorkCode(ref) {
+  return `(() => {${browserCaptureBundle()};return WebnovelBrowser.readSearchWork(${JSON.stringify(ref.url)});})()`;
+}
+function parseSearchWorkResult(result, ref) {
+  if (!result || typeof result !== "object") throw new Error("\u7F51\u9875\u6CA1\u6709\u8FD4\u56DE\u4F5C\u54C1\u8D44\u6599\u3002");
+  if ("error" in result && typeof result.error === "string" && result.error) throw new Error(result.error);
+  const metadata = parseCapturedMetadata("metadata" in result ? result.metadata : void 0, ref);
+  metadata.evidence.acquisition = "\u4ECE Obsidian \u5B98\u7F51\u641C\u7D22\u4E2D\u9009\u4E2D\u5DF2\u6253\u5F00\u7684\u4F5C\u54C1\u9875";
+  return metadata;
+}
+
+// src/search-browser.ts
+var searchPartition = "webnovel-import-search";
+var SearchBrowserModal = class extends import_obsidian5.Modal {
+  constructor(plugin, provider, keyword) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.provider = provider;
+    this.keyword = keyword;
+    this.generation = 0;
+    this.onSearchPage = false;
+    this.reading = false;
+  }
+  onOpen() {
+    const { url } = officialSearch(this.provider, this.keyword);
+    this.modalEl.addClass("webnovel-search-browser");
+    this.titleEl.setText(`\u641C\u7D22\u7F51\u6587\u4F5C\u54C1 \xB7 ${searchProviders[this.provider].name}`);
+    const actions = this.contentEl.createDiv({ cls: "webnovel-search-browser-actions" });
+    this.back = actions.createEl("button", { type: "button", text: "\u540E\u9000" });
+    this.reload = actions.createEl("button", { type: "button", text: "\u91CD\u65B0\u52A0\u8F7D" });
+    this.preview = actions.createEl("button", { type: "button", text: "\u9884\u89C8\u5F53\u524D\u4F5C\u54C1" });
+    actions.createEl("button", { type: "button", text: "\u66F4\u6362\u641C\u7D22" }).addEventListener("click", () => {
+      this.close();
+      this.plugin.openSearch();
+    });
+    this.back.disabled = this.reload.disabled = this.preview.disabled = true;
+    this.back.addEventListener("click", () => this.controlGuest((guest2) => guest2.goBack()));
+    this.reload.addEventListener("click", () => this.controlGuest((guest2) => guest2.reload()));
+    this.preview.addEventListener("click", () => {
+      if (this.current) void this.previewWork(this.current);
+    });
+    this.status = this.contentEl.createEl("p", {
+      cls: "webnovel-status",
+      text: "\u6B63\u5728\u6253\u5F00\u5B98\u7F51\u641C\u7D22\u2026",
+      attr: { role: "status" }
+    });
+    const guest = this.contentEl.ownerDocument.createElement("webview");
+    guest.addClass("webnovel-search-guest");
+    guest.setAttribute("aria-label", `${searchProviders[this.provider].name}\u5B98\u7F51`);
+    guest.setAttribute("partition", searchPartition);
+    guest.setAttribute("webpreferences", "sandbox=yes,contextIsolation=yes,nodeIntegration=no,webSecurity=yes");
+    if (!(0, import_obsidian5.requireApiVersion)("1.8.3") || typeof guest.executeJavaScript !== "function" || typeof guest.getURL !== "function") {
+      this.status.setText("\u5B98\u7F51\u641C\u7D22\u7A97\u53E3\u9700\u8981\u684C\u9762\u7248 Obsidian 1.8.3 \u6216\u66F4\u65B0\u7248\u672C\u3002");
+      return;
+    }
+    try {
+      const { ipcRenderer } = require("electron");
+      ipcRenderer.send("create-browser-session", searchPartition, false);
+    } catch {
+      this.status.setText("\u5F53\u524D Obsidian \u65E0\u6CD5\u521D\u59CB\u5316\u5B98\u7F51\u641C\u7D22\u7A97\u53E3\u3002");
+      return;
+    }
+    this.guest = guest;
+    guest.addEventListener("did-start-navigation", (event) => {
+      const navigation = event;
+      if (!navigation.isMainFrame || this.guest !== guest) return;
+      if (this.onSearchPage) {
+        const book = this.bookAt(navigation.url);
+        this.selectedFromSearch = book && sourceKey(book);
+      }
+      this.onSearchPage = false;
+      this.resetPage("\u6B63\u5728\u6253\u5F00\u7F51\u9875\u2026");
+    });
+    guest.addEventListener("dom-ready", () => this.onPageReady(guest));
+    guest.addEventListener("did-navigate-in-page", (event) => {
+      if (event.isMainFrame) this.onPageReady(guest);
+    });
+    guest.addEventListener("did-fail-load", (event) => {
+      const failure = event;
+      if (!failure.isMainFrame || failure.errorCode === -3 || this.guest !== guest) return;
+      this.selectedFromSearch = void 0;
+      this.resetPage("\u7F51\u9875\u52A0\u8F7D\u5931\u8D25\u3002\u53EF\u4EE5\u91CD\u65B0\u52A0\u8F7D\uFF0C\u6216\u8FD4\u56DE\u641C\u7D22\u7ED3\u679C\u3002");
+      this.updateControls(guest);
+    });
+    guest.src = url;
+    this.contentEl.appendChild(guest);
+  }
+  controlGuest(action) {
+    if (!this.guest) return;
+    try {
+      action(this.guest);
+    } catch {
+      this.status.setText("\u7F51\u9875\u6682\u65F6\u65E0\u6CD5\u64CD\u4F5C\u3002\u8BF7\u91CD\u65B0\u6253\u5F00\u5B98\u7F51\u641C\u7D22\u3002");
+    }
+  }
+  resetPage(message) {
+    this.generation++;
+    this.current = void 0;
+    this.reading = false;
+    this.preview.disabled = true;
+    this.status.setText(message);
+  }
+  updateControls(guest) {
+    try {
+      this.back.disabled = !guest.canGoBack();
+    } catch {
+      this.back.disabled = true;
+    }
+    this.reload.disabled = false;
+  }
+  currentAddress(guest) {
+    try {
+      return guest.getURL();
+    } catch {
+      return "";
+    }
+  }
+  bookAt(address) {
+    if (!address.startsWith("https://")) return void 0;
+    try {
+      const book = parseBookUrl(address);
+      return book.provider === this.provider ? book : void 0;
+    } catch {
+      return void 0;
+    }
+  }
+  onPageReady(guest) {
+    if (this.guest !== guest) return;
+    this.updateControls(guest);
+    const address = this.currentAddress(guest);
+    const ref = this.bookAt(address);
+    if (ref) {
+      this.current = ref;
+      this.preview.disabled = this.reading;
+      const key = sourceKey(ref);
+      if (this.selectedFromSearch === key && this.autoPreviewed !== key) {
+        void this.previewWork(ref);
+      } else if (!this.reading) {
+        this.status.setText("\u53EF\u4EE5\u9884\u89C8\u5F53\u524D\u4F5C\u54C1\uFF0C\u4E5F\u53EF\u4EE5\u540E\u9000\u7EE7\u7EED\u9009\u62E9\u3002");
+      }
+      return;
+    }
+    this.autoPreviewed = void 0;
+    this.selectedFromSearch = void 0;
+    const isSearch = this.onSearchPage = isOfficialSearchPage(this.provider, address);
+    this.resetPage(isSearch ? "\u5728\u5B98\u7F51\u641C\u7D22\u7ED3\u679C\u4E2D\u70B9\u5F00\u4F5C\u54C1\uFF0C\u63D2\u4EF6\u4F1A\u6253\u5F00\u5BFC\u5165\u9884\u89C8\u3002" : "\u8BF7\u4ECE\u5B98\u7F51\u641C\u7D22\u7ED3\u679C\u4E2D\u6253\u5F00\u4F5C\u54C1\u8BE6\u60C5\u9875\u3002");
+    if (!isSearch) return;
+    const generation = this.generation;
+    void guest.executeJavaScript(prepareSearchPageCode(this.provider, this.keyword)).catch(() => {
+      if (this.guest === guest && this.generation === generation) {
+        this.status.setText("\u53EF\u4EE5\u5728\u5B98\u7F51\u641C\u7D22\u6846\u8F93\u5165\u5173\u952E\u8BCD\uFF0C\u518D\u4ECE\u7ED3\u679C\u4E2D\u6253\u5F00\u4F5C\u54C1\u3002");
+      }
+    });
+  }
+  async previewWork(ref) {
+    const guest = this.guest;
+    if (!guest || this.reading) return;
+    const generation = this.generation;
+    const isCurrent = () => {
+      if (this.guest !== guest || this.generation !== generation) return false;
+      const book = this.bookAt(this.currentAddress(guest));
+      return book !== void 0 && sourceKey(book) === sourceKey(ref);
+    };
+    const code = readSearchWorkCode(ref);
+    this.reading = this.preview.disabled = true;
+    this.status.setText("\u6B63\u5728\u8BFB\u53D6\u4F5C\u54C1\u8D44\u6599\u2026");
+    let failure;
+    for (const delay of [0, 300, 900]) {
+      if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+      if (!isCurrent()) return;
+      try {
+        const result = await guest.executeJavaScript(code);
+        if (!isCurrent()) return;
+        const metadata = parseSearchWorkResult(result, ref);
+        this.reading = this.preview.disabled = false;
+        this.autoPreviewed = sourceKey(ref);
+        this.status.setText(`\u5DF2\u8BFB\u53D6\u300C${metadata.title}\u300D\u3002\u53EF\u4EE5\u91CD\u65B0\u9884\u89C8\uFF0C\u6216\u540E\u9000\u7EE7\u7EED\u9009\u62E9\u3002`);
+        new SingleImportModal(this.plugin, void 0, { metadata, onAccepted: () => this.close() }).open();
+        return;
+      } catch (error) {
+        failure = error;
+      }
+    }
+    if (!isCurrent()) return;
+    this.reading = this.preview.disabled = false;
+    const message = failure instanceof Error ? failure.message : String(failure);
+    this.status.setText(`\u672A\u80FD\u8BFB\u53D6\u4F5C\u54C1\u8D44\u6599\u3002\u8BF7\u786E\u8BA4\u7F51\u9875\u5DF2\u6B63\u5E38\u663E\u793A\u540E\uFF0C\u518D\u70B9\u300C\u9884\u89C8\u5F53\u524D\u4F5C\u54C1\u300D\u3002
+${message}`);
+  }
+  onClose() {
+    this.generation++;
+    this.guest = void 0;
+    this.current = void 0;
+    this.autoPreviewed = void 0;
+    this.selectedFromSearch = void 0;
+    this.onSearchPage = false;
+    this.reading = false;
+    this.contentEl.empty();
+  }
+};
+
 // src/main.ts
-var WebnovelPlugin = class extends import_obsidian5.Plugin {
+var WebnovelPlugin = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.settings = { ...DEFAULT_SETTINGS };
@@ -3371,14 +3600,14 @@ var WebnovelPlugin = class extends import_obsidian5.Plugin {
   async onload() {
     this.settings = { ...DEFAULT_SETTINGS, ...await this.loadData() };
     this.importer = new Importer(this.app, () => this.settings);
-    this.addCommand({ id: "search-works", name: "\u641C\u7D22\u7F51\u6587\u4F5C\u54C1", callback: () => new SearchModal(this).open() });
+    this.addCommand({ id: "search-works", name: "\u641C\u7D22\u7F51\u6587\u4F5C\u54C1", callback: () => this.openSearch() });
     this.addCommand({ id: "import-book", name: "\u4ECE\u94FE\u63A5\u5BFC\u5165\u7F51\u6587\u4F5C\u54C1", callback: () => new SingleImportModal(this).open() });
     this.addCommand({ id: "manual-work", name: "\u624B\u52A8\u6DFB\u52A0\u7F51\u6587\u4F5C\u54C1", callback: () => new ManualWorkModal(this).open() });
     this.addCommand({ id: "import-links", name: "\u6279\u91CF\u5BFC\u5165\u7F51\u6587\u4F5C\u54C1\u94FE\u63A5", callback: () => new BatchImportModal(this).open() });
     this.addCommand({ id: "import-browser-capture", name: "\u4ECE\u6D4F\u89C8\u5668\u91C7\u96C6\u7ED3\u679C\u5BFC\u5165", callback: () => void this.receiveBrowserCapture() });
     this.registerObsidianProtocolHandler("webnovel-import", (params) => {
       if (params.vault && params.vault !== this.app.vault.getName()) {
-        new import_obsidian5.Notice(`\u6B64\u91C7\u96C6\u4E66\u7B7E\u5BF9\u5E94 Vault\u300C${params.vault}\u300D\u3002\u8BF7\u5207\u6362\u5230\u5BF9\u5E94 Vault\uFF0C\u6216\u5728\u5F53\u524D Vault \u91CD\u65B0\u590D\u5236\u4E66\u7B7E\u3002`, 1e4);
+        new import_obsidian6.Notice(`\u6B64\u91C7\u96C6\u4E66\u7B7E\u5BF9\u5E94 Vault\u300C${params.vault}\u300D\u3002\u8BF7\u5207\u6362\u5230\u5BF9\u5E94 Vault\uFF0C\u6216\u5728\u5F53\u524D Vault \u91CD\u65B0\u590D\u5236\u4E66\u7B7E\u3002`, 1e4);
         return;
       }
       if (params.clipboard === "1") void this.receiveBrowserCapture({
@@ -3422,6 +3651,18 @@ var WebnovelPlugin = class extends import_obsidian5.Plugin {
     });
     this.addSettingTab(new WebnovelSettings(this));
   }
+  openSearch() {
+    new SearchModal(this).open();
+  }
+  openSearchBrowser(provider, keyword) {
+    this.searchBrowser?.close();
+    this.searchBrowser = new SearchBrowserModal(this, provider, keyword);
+    this.searchBrowser.open();
+  }
+  onunload() {
+    this.searchBrowser?.close();
+    this.searchBrowser = void 0;
+  }
   activeMarkdown() {
     const file = this.app.workspace.getActiveFile();
     return file?.extension === "md" ? file : null;
@@ -3447,9 +3688,9 @@ var WebnovelPlugin = class extends import_obsidian5.Plugin {
   async copyCaptureBookmarklet() {
     try {
       await navigator.clipboard.writeText(makeBookmarklet(this.app.vault.getName()));
-      new import_obsidian5.Notice("\u5DF2\u590D\u5236\u201C\u91C7\u96C6\u5F53\u524D\u7F51\u6587\u4F5C\u54C1\u201D\u3002\u8BF7\u7C98\u8D34\u5230\u6D4F\u89C8\u5668\u4E66\u7B7E\u7684\u7F51\u5740\u680F\uFF0C\u5E76\u4FDD\u7559\u5F00\u5934\u7684 javascript:\u3002", 1e4);
+      new import_obsidian6.Notice("\u5DF2\u590D\u5236\u201C\u91C7\u96C6\u5F53\u524D\u7F51\u6587\u4F5C\u54C1\u201D\u3002\u8BF7\u7C98\u8D34\u5230\u6D4F\u89C8\u5668\u4E66\u7B7E\u7684\u7F51\u5740\u680F\uFF0C\u5E76\u4FDD\u7559\u5F00\u5934\u7684 javascript:\u3002", 1e4);
     } catch (error) {
-      new import_obsidian5.Notice(`\u590D\u5236\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      new import_obsidian6.Notice(`\u590D\u5236\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
     }
   }
   async receiveBrowserCapture(expected) {
@@ -3464,7 +3705,7 @@ var WebnovelPlugin = class extends import_obsidian5.Plugin {
         if (pending?.key === sourceKey(metadata) && this.browserTarget === pending) this.browserTarget = void 0;
       } }).open();
     } catch (error) {
-      new import_obsidian5.Notice(`\u6D4F\u89C8\u5668\u91C7\u96C6\u5BFC\u5165\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}
+      new import_obsidian6.Notice(`\u6D4F\u89C8\u5668\u91C7\u96C6\u5BFC\u5165\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}
 \u53EF\u4ECE\u4F5C\u54C1\u94FE\u63A5\u5BFC\u5165\u5F39\u7A97\u9009\u62E9\u5DF2\u4FDD\u5B58\u7684 HTML\u3002`, 1e4);
     }
   }
@@ -3473,7 +3714,7 @@ var WebnovelPlugin = class extends import_obsidian5.Plugin {
     try {
       sources = this.importer.sources(file);
     } catch (error) {
-      new import_obsidian5.Notice(error instanceof Error ? error.message : String(error), 1e4);
+      new import_obsidian6.Notice(error instanceof Error ? error.message : String(error), 1e4);
       return;
     }
     let recoveryUrl;
@@ -3483,11 +3724,11 @@ var WebnovelPlugin = class extends import_obsidian5.Plugin {
         const metadata = await this.importer.fetch(source.url);
         if (this.importRoute().kind !== "independent") throw new Error("\u5F53\u524D\u6A21\u5F0F\u5DF2\u5207\u6362\uFF0C\u8BF7\u901A\u8FC7\u5355\u6761\u9884\u89C8\u4EA4\u7ED9 Media Core\u3002");
         const result = await this.importer.import(metadata, file);
-        new import_obsidian5.Notice(`${providerName(source.provider)}\u5DF2\u5237\u65B0\uFF1A\u91C7\u7528 ${result.adopted.length} \u9879\uFF0C\u4FDD\u7559 ${result.preserved.length} \u9879\u4EBA\u5DE5/\u5176\u4ED6\u6765\u6E90\u503C\u3002${result.warnings.length ? `
+        new import_obsidian6.Notice(`${providerName(source.provider)}\u5DF2\u5237\u65B0\uFF1A\u91C7\u7528 ${result.adopted.length} \u9879\uFF0C\u4FDD\u7559 ${result.preserved.length} \u9879\u4EBA\u5DE5/\u5176\u4ED6\u6765\u6E90\u503C\u3002${result.warnings.length ? `
 ${result.warnings.join("\n")}` : ""}`, 8e3);
       } catch (error) {
         recoveryUrl ?? (recoveryUrl = source.url);
-        new import_obsidian5.Notice(`${providerName(source.provider)}\u5237\u65B0\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`, 1e4);
+        new import_obsidian6.Notice(`${providerName(source.provider)}\u5237\u65B0\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`, 1e4);
       }
     }
     if (recoveryUrl) new SingleImportModal(this, file, { url: recoveryUrl }).open();
@@ -3496,7 +3737,7 @@ ${result.warnings.join("\n")}` : ""}`, 8e3);
     await this.saveData(this.settings);
   }
 };
-var WebnovelSettings = class extends import_obsidian5.PluginSettingTab {
+var WebnovelSettings = class extends import_obsidian6.PluginSettingTab {
   constructor(plugin) {
     super(plugin.app, plugin);
     this.plugin = plugin;
@@ -3505,30 +3746,30 @@ var WebnovelSettings = class extends import_obsidian5.PluginSettingTab {
     this.containerEl.empty();
     this.containerEl.createEl("h2", { text: "Webnovel Import" });
     this.containerEl.createEl("p", { text: `\u4F5C\u54C1\u5143\u6570\u636E\u5BFC\u5165\u5668 \xB7 ${this.plugin.manifest.version} \u5F00\u53D1\u9884\u89C8\u3002\u652F\u6301\u8D77\u70B9\u3001\u756A\u8304\u3001\u4E03\u732B\u4E0E\u664B\u6C5F\u7684\u641C\u7D22\u548C\u4F5C\u54C1\u91C7\u96C6\u3002` });
-    new import_obsidian5.Setting(this.containerEl).setName("\u5BFC\u5165\u6A21\u5F0F").setDesc("\u81EA\u52A8\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Media Core\uFF1B\u786E\u8BA4\u672A\u5B89\u88C5\u65F6\u624D\u72EC\u7ACB\u4FDD\u5B58\u3002\u5DF2\u5B89\u88C5\u4F46\u4E0D\u53EF\u7528\u65F6\uFF0C\u53EF\u4EE5\u590D\u5236\u89C4\u8303\u6765\u6E90 JSON \u6216\u5728\u8FD9\u91CC\u660E\u786E\u5207\u6362\u6A21\u5F0F\u3002").addDropdown((dropdown) => dropdown.addOptions({ auto: "\u81EA\u52A8", "media-core": "Media Core", independent: "\u72EC\u7ACB" }).setValue(this.plugin.settings.importMode).onChange(async (value) => {
+    new import_obsidian6.Setting(this.containerEl).setName("\u5BFC\u5165\u6A21\u5F0F").setDesc("\u81EA\u52A8\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Media Core\uFF1B\u786E\u8BA4\u672A\u5B89\u88C5\u65F6\u624D\u72EC\u7ACB\u4FDD\u5B58\u3002\u5DF2\u5B89\u88C5\u4F46\u4E0D\u53EF\u7528\u65F6\uFF0C\u53EF\u4EE5\u590D\u5236\u89C4\u8303\u6765\u6E90 JSON \u6216\u5728\u8FD9\u91CC\u660E\u786E\u5207\u6362\u6A21\u5F0F\u3002").addDropdown((dropdown) => dropdown.addOptions({ auto: "\u81EA\u52A8", "media-core": "Media Core", independent: "\u72EC\u7ACB" }).setValue(this.plugin.settings.importMode).onChange(async (value) => {
       this.plugin.settings.importMode = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian5.Setting(this.containerEl).setName("\u91C7\u96C6\u5F53\u524D\u7F51\u6587\u4F5C\u54C1").setDesc("\u628A\u590D\u5236\u7684\u5185\u5BB9\u7528\u4F5C\u6D4F\u89C8\u5668\u4E66\u7B7E\u7684\u7F51\u5740\u3002\u6253\u5F00\u8D77\u70B9\u3001\u4E03\u732B\u6216\u664B\u6C5F\u4F5C\u54C1\u8BE6\u60C5\u9875\u540E\u70B9\u51FB\u4E66\u7B7E\uFF0C\u8D44\u6599\u901A\u8FC7\u672C\u673A\u526A\u8D34\u677F\u8FD4\u56DE\u5F53\u524D Vault \u7684\u9884\u89C8\u3002\u756A\u8304\u53EF\u7528\u4F5C\u54C1\u94FE\u63A5\u83B7\u53D6\u3002").addButton((button) => button.setButtonText("\u590D\u5236\u91C7\u96C6\u4E66\u7B7E").onClick(() => void this.plugin.copyCaptureBookmarklet()));
-    new import_obsidian5.Setting(this.containerEl).setName("\u65B0\u4F5C\u54C1\u76EE\u5F55").setDesc("\u76F8\u5BF9\u4E8E\u5F53\u524D Vault\u3002\u65E2\u6709\u6587\u4EF6\u4FDD\u6301\u539F\u8DEF\u5F84\u3002").addText((text2) => text2.setValue(this.plugin.settings.outputFolder).onChange(async (value) => {
+    new import_obsidian6.Setting(this.containerEl).setName("\u91C7\u96C6\u5F53\u524D\u7F51\u6587\u4F5C\u54C1").setDesc("\u628A\u590D\u5236\u7684\u5185\u5BB9\u7528\u4F5C\u6D4F\u89C8\u5668\u4E66\u7B7E\u7684\u7F51\u5740\u3002\u6253\u5F00\u8D77\u70B9\u3001\u4E03\u732B\u6216\u664B\u6C5F\u4F5C\u54C1\u8BE6\u60C5\u9875\u540E\u70B9\u51FB\u4E66\u7B7E\uFF0C\u8D44\u6599\u901A\u8FC7\u672C\u673A\u526A\u8D34\u677F\u8FD4\u56DE\u5F53\u524D Vault \u7684\u9884\u89C8\u3002\u756A\u8304\u53EF\u7528\u4F5C\u54C1\u94FE\u63A5\u83B7\u53D6\u3002").addButton((button) => button.setButtonText("\u590D\u5236\u91C7\u96C6\u4E66\u7B7E").onClick(() => void this.plugin.copyCaptureBookmarklet()));
+    new import_obsidian6.Setting(this.containerEl).setName("\u65B0\u4F5C\u54C1\u76EE\u5F55").setDesc("\u76F8\u5BF9\u4E8E\u5F53\u524D Vault\u3002\u65E2\u6709\u6587\u4EF6\u4FDD\u6301\u539F\u8DEF\u5F84\u3002").addText((text2) => text2.setValue(this.plugin.settings.outputFolder).onChange(async (value) => {
       try {
         this.plugin.settings.outputFolder = folderPath(value);
         await this.plugin.saveSettings();
       } catch {
       }
     }));
-    new import_obsidian5.Setting(this.containerEl).setName("\u4E0B\u8F7D\u5C01\u9762").setDesc("\u6210\u529F\u540E\u4FDD\u5B58\u5728 Vault\uFF1B\u4E0B\u8F7D\u5931\u8D25\u4FDD\u7559\u539F\u59CB\u5C01\u9762\u94FE\u63A5\u3002").addToggle((toggle) => toggle.setValue(this.plugin.settings.downloadCovers).onChange(async (value) => {
+    new import_obsidian6.Setting(this.containerEl).setName("\u4E0B\u8F7D\u5C01\u9762").setDesc("\u6210\u529F\u540E\u4FDD\u5B58\u5728 Vault\uFF1B\u4E0B\u8F7D\u5931\u8D25\u4FDD\u7559\u539F\u59CB\u5C01\u9762\u94FE\u63A5\u3002").addToggle((toggle) => toggle.setValue(this.plugin.settings.downloadCovers).onChange(async (value) => {
       this.plugin.settings.downloadCovers = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian5.Setting(this.containerEl).setName("\u5C01\u9762\u76EE\u5F55").addText((text2) => text2.setValue(this.plugin.settings.coverFolder).onChange(async (value) => {
+    new import_obsidian6.Setting(this.containerEl).setName("\u5C01\u9762\u76EE\u5F55").addText((text2) => text2.setValue(this.plugin.settings.coverFolder).onChange(async (value) => {
       try {
         this.plugin.settings.coverFolder = folderPath(value);
         await this.plugin.saveSettings();
       } catch {
       }
     }));
-    new import_obsidian5.Setting(this.containerEl).setName("\u672C\u5730\u7B80\u4ECB\u957F\u5EA6").setDesc("\u6765\u6E90\u7B80\u4ECB\u53E6\u5B58\u4E8E\u6765\u6E90\u533A\uFF1B\u4EBA\u5DE5\u4FEE\u6539\u540E\u7684\u672C\u5730\u7B80\u4ECB\u53D7\u4FDD\u62A4\u3002").addSlider((slider) => slider.setLimits(80, 600, 20).setValue(this.plugin.settings.summaryLength).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian6.Setting(this.containerEl).setName("\u672C\u5730\u7B80\u4ECB\u957F\u5EA6").setDesc("\u6765\u6E90\u7B80\u4ECB\u53E6\u5B58\u4E8E\u6765\u6E90\u533A\uFF1B\u4EBA\u5DE5\u4FEE\u6539\u540E\u7684\u672C\u5730\u7B80\u4ECB\u53D7\u4FDD\u62A4\u3002").addSlider((slider) => slider.setLimits(80, 600, 20).setValue(this.plugin.settings.summaryLength).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.summaryLength = value;
       await this.plugin.saveSettings();
     }));

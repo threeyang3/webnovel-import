@@ -1,6 +1,6 @@
 import { Modal, Setting } from 'obsidian';
 import type WebnovelPlugin from './main';
-import { officialSearch, searchProviders, type SearchProvider } from './search';
+import { searchProviders, type SearchProvider } from './search';
 import { ManualWorkModal } from './manual-ui';
 import { SingleImportModal } from './ui';
 
@@ -10,7 +10,7 @@ export class SearchModal extends Modal {
   onOpen(): void {
     this.contentEl.addClass('webnovel-import-modal');
     this.contentEl.createEl('h2', { text: '搜索网文作品' });
-    this.contentEl.createEl('p', { text: '输入书名或作者，按需打开一个平台的官网搜索。找到作品后进入详情页采集。' });
+    this.contentEl.createEl('p', { text: '输入书名或作者，在 Obsidian 里打开官网搜索。点进作品即可预览导入。' });
     new Setting(this.contentEl).setName('关键词').addText(text => {
       text.setPlaceholder('输入书名或作者').setValue(this.plugin.searchKeyword)
         .onChange(value => { this.plugin.searchKeyword = value; });
@@ -25,23 +25,14 @@ export class SearchModal extends Modal {
         if (filter && filter !== provider) continue;
         const site = searchProviders[provider];
         new Setting(entries).setName(site.name).setDesc(site.hint).addButton(button => {
-          button.setButtonText(provider === 'jjwxc' ? '复制关键词并打开' : '打开搜索').onClick(async () => {
-            try {
-              const search = officialSearch(provider, this.plugin.searchKeyword);
-              let guidance = '请在官网打开目标作品的详情页。';
-              if (search.copyKeyword !== undefined) {
-                try {
-                  await navigator.clipboard.writeText(search.copyKeyword);
-                  guidance = '已复制关键词，请在官网搜索框粘贴。';
-                } catch {
-                  guidance = '无法访问剪贴板，请从关键词输入框复制，再到官网搜索。';
-                }
-              }
-              window.open(search.url, '_blank', 'noopener,noreferrer');
-              status.setText(guidance);
-            } catch (error) {
-              status.setText(error instanceof Error ? error.message : String(error));
+          button.setButtonText('在 Obsidian 搜索').onClick(() => {
+            const keyword = this.plugin.searchKeyword.trim();
+            if (!keyword) {
+              status.setText('请输入书名或作者关键词。');
+              return;
             }
+            this.close();
+            this.plugin.openSearchBrowser(provider, keyword);
           });
         });
       }
@@ -53,9 +44,7 @@ export class SearchModal extends Modal {
       dropdown.onChange(render);
     });
     render('');
-    new Setting(this.contentEl).setName('找到作品后')
-      .setDesc('起点、七猫和晋江详情页可使用采集书签直接返回。番茄可从详情页链接获取，四站均可尝试解析已保存的作品页 HTML。')
-      .addButton(button => button.setButtonText('复制采集书签').onClick(() => void this.plugin.copyCaptureBookmarklet()))
+    new Setting(this.contentEl).setName('已有作品链接？')
       .addButton(button => button.setButtonText('从链接导入').onClick(() => {
         this.close();
         new SingleImportModal(this.plugin).open();
