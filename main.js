@@ -2060,7 +2060,7 @@ function isManualField(source, field) {
   return source.acquisition === "manual" || source.evidence[field]?.startsWith("manual:") === true;
 }
 function isMissingSourceField(source, field) {
-  return isEmpty(source[field]) || field === "serialization_status" && source[field] === "unknown" && !isManualField(source, field);
+  return isEmpty(source[field]) || field === "serialization_status" && source[field] === "unknown";
 }
 function sameValue(left, right) {
   if (Object.is(left, right)) return true;
@@ -2082,8 +2082,9 @@ function mergeSnapshot(previous, incoming) {
   const retainedFields = { ...previous?.retained_fields };
   const retainedAcquisitions = { ...previous?.retained_field_acquisitions };
   if (incoming.tags) snapshot.tags = [...incoming.tags];
-  if (incoming.serialization_status === "unknown" && !isManualField(incoming, "serialization_status")) {
+  if (isMissingSourceField(incoming, "serialization_status")) {
     delete snapshot.serialization_status;
+    delete snapshot.evidence.serialization_status;
   }
   for (const field of metadataFields) {
     if (isMissingSourceField(incoming, field) && previous && !isMissingSourceField(previous, field)) {
@@ -2142,12 +2143,12 @@ function upsertFrontmatter(current, incoming, options) {
     { field: "serialization_status", sourceField: "serialization_status", value: incoming.serialization_status }
   ];
   for (const { field, sourceField, value } of candidates) {
-    if (isEmpty(value)) continue;
+    if (isEmpty(value) || field === "serialization_status" && value === "unknown") continue;
     const evidence = incoming.evidence[sourceField];
     const manual = isManualField(incoming, sourceField);
-    if (field === "serialization_status" && value === "unknown" && !manual) continue;
     const previous = adoptionRecords[field];
-    const mayUpdate = previous ? (previous.source_key === key || manual && previous.source_key === `manual:${key}`) && sameValue(frontmatter[field], previous.value) : isEmpty(frontmatter[field]);
+    const unchangedUnknown = field === "serialization_status" && frontmatter[field] === "unknown" && previous?.value === "unknown" && previous.source_key.startsWith("manual:");
+    const mayUpdate = unchangedUnknown || (previous ? (previous.source_key === key || manual && previous.source_key === `manual:${key}`) && sameValue(frontmatter[field], previous.value) : isEmpty(frontmatter[field]));
     if (!mayUpdate) {
       preserved.push(field);
       continue;
@@ -2218,7 +2219,7 @@ function normalizeManualWork(draft) {
     ...summary && { summary },
     ...date && { first_published_at: date },
     ...year !== void 0 && { first_published_year: year },
-    ...status2 && { serialization_status: status2 },
+    ...status2 && status2 !== "unknown" && { serialization_status: status2 },
     ...wordCount && { word_count_text: wordCount },
     ...tags && { tags },
     ...(platform || url || note) && { reference: { ...platform && { platform }, ...url && { url }, ...note && { note } } }
@@ -2518,9 +2519,9 @@ function toMediaCoreSource(source, { archive = false, now = () => (/* @__PURE__ 
   const locators = Object.fromEntries(Object.entries(source.evidence ?? {}).filter(([, value]) => typeof value === "string"));
   const acquisition = ["remote", "html", "browser", "manual"].includes(source.acquisition) ? source.acquisition : void 0;
   const currentTime = optionalValue(source.fetched_at, import_media_source_v2.normalizeTimestamp);
-  const manual = !archive && (acquisition === "manual" || Object.values(locators).some((locator) => locator.startsWith("manual:")));
-  const method = manual ? "manual" : archive || !currentTime || !acquisition ? "archive" : acquisition;
-  const acquired_at = method === "archive" || manual ? (0, import_media_source_v2.normalizeTimestamp)(now()) : currentTime;
+  const method = archive || !acquisition || !currentTime && acquisition !== "manual" ? "archive" : acquisition;
+  let exportedAt = method === "archive" || method === "manual" ? (0, import_media_source_v2.normalizeTimestamp)(now()) : void 0;
+  const acquired_at = exportedAt ?? currentTime;
   const warnings = Array.isArray(source.warnings) ? source.warnings.filter((value) => typeof value === "string") : [];
   const fields = {};
   const field_evidence = {};
@@ -2536,7 +2537,8 @@ function toMediaCoreSource(source, { archive = false, now = () => (/* @__PURE__ 
       return { state: "retained", basis, ...observed_at ? { observed_at } : {}, ...locator ? { locator } : {} };
     }
     if (!archive && isManual) {
-      return { state: "observed", basis: "manual-entry", observed_at: acquired_at, ...locator ? { locator } : {} };
+      exportedAt ?? (exportedAt = (0, import_media_source_v2.normalizeTimestamp)(now()));
+      return { state: "observed", basis: "manual-entry", observed_at: exportedAt, ...locator ? { locator } : {} };
     }
     if (isManual && acquisition !== "manual") {
       return { state: "retained", basis: "manual-entry", ...locator ? { locator } : {} };
@@ -2545,7 +2547,7 @@ function toMediaCoreSource(source, { archive = false, now = () => (/* @__PURE__ 
       return { state: "unverified", basis: "local-document-read", ...locator ? { locator } : {} };
     }
     return {
-      state: archive || manual ? "retained" : "observed",
+      state: archive ? "retained" : "observed",
       basis: isManual ? "manual-entry" : "source-observation",
       observed_at: currentTime,
       ...locator ? { locator } : {}
@@ -2781,7 +2783,7 @@ var SingleImportModal = class extends import_obsidian2.Modal {
     new import_obsidian2.Setting(this.form).setName("\u7F51\u6587\u9996\u53D1\u5E74\u4EFD").setDesc("\u672A\u77E5\u65F6\u7559\u7A7A\uFF1B\u4E0D\u4EE5\u6700\u8FD1\u66F4\u65B0\u6216\u7EB8\u4E66\u51FA\u7248\u5E74\u4EFD\u4EE3\u66FF\u3002").addText((text2) => text2.setValue(yearText).setPlaceholder("\u672A\u77E5").onChange((value) => {
       yearText = value.trim();
     }));
-    new import_obsidian2.Setting(this.form).setName("\u8FDE\u8F7D\u72B6\u6001").addDropdown((dropdown) => dropdown.addOptions({ unknown: "\u672A\u77E5", ongoing: "\u8FDE\u8F7D\u4E2D", completed: "\u5DF2\u5B8C\u7ED3", paused: "\u6682\u505C" }).setValue(edited.serialization_status ?? "unknown").onChange((value) => set("serialization_status", value)));
+    new import_obsidian2.Setting(this.form).setName("\u8FDE\u8F7D\u72B6\u6001").addDropdown((dropdown) => dropdown.addOptions({ "": "\u672A\u77E5\uFF08\u7559\u7A7A\uFF09", ongoing: "\u8FDE\u8F7D\u4E2D", completed: "\u5DF2\u5B8C\u7ED3", paused: "\u6682\u505C" }).setValue(edited.serialization_status === "unknown" ? "" : edited.serialization_status ?? "").onChange((value) => set("serialization_status", value || void 0)));
     if (edited.last_updated_at) this.form.createEl("p", { text: `\u6765\u6E90\u6700\u8FD1\u66F4\u65B0\uFF1A${edited.last_updated_at}`, cls: "setting-item-description" });
     if (edited.word_count_text) this.form.createEl("p", { text: `\u6765\u6E90\u663E\u793A\u5B57\u6570\uFF1A${edited.word_count_text}`, cls: "setting-item-description" });
     const readForm = () => {
@@ -3170,7 +3172,7 @@ var ManualWorkModal = class extends import_obsidian3.Modal {
     new import_obsidian3.Setting(form).setName("\u9996\u53D1\u5E74\u4EFD\u6216\u65E5\u671F").addText((text2) => text2.setValue(this.publication).setPlaceholder("YYYY \u6216 YYYY-MM-DD").onChange((value) => {
       this.publication = value.trim();
     }));
-    new import_obsidian3.Setting(form).setName("\u539F\u4F5C\u72B6\u6001").addDropdown((dropdown) => dropdown.addOptions({ "": "\u7559\u7A7A", ongoing: "\u8FDE\u8F7D\u4E2D", completed: "\u5DF2\u5B8C\u7ED3", paused: "\u6682\u505C", unknown: "\u672A\u77E5" }).setValue(this.draft.serialization_status ?? "").onChange((value) => {
+    new import_obsidian3.Setting(form).setName("\u539F\u4F5C\u72B6\u6001").addDropdown((dropdown) => dropdown.addOptions({ "": "\u672A\u77E5\uFF08\u7559\u7A7A\uFF09", ongoing: "\u8FDE\u8F7D\u4E2D", completed: "\u5DF2\u5B8C\u7ED3", paused: "\u6682\u505C" }).setValue(this.draft.serialization_status ?? "").onChange((value) => {
       this.draft.serialization_status = value || void 0;
     }));
     new import_obsidian3.Setting(form).setName("\u5B57\u6570").addText((text2) => text2.setValue(this.draft.word_count_text ?? "").setPlaceholder("\u4F8B\u5982 120 \u4E07\u5B57").onChange((value) => {
@@ -3420,6 +3422,14 @@ var SearchBrowserModal = class extends import_obsidian5.Modal {
     this.back = actions.createEl("button", { type: "button", text: "\u540E\u9000" });
     this.reload = actions.createEl("button", { type: "button", text: "\u91CD\u65B0\u52A0\u8F7D" });
     this.preview = actions.createEl("button", { type: "button", text: "\u9884\u89C8\u5F53\u524D\u4F5C\u54C1" });
+    actions.createEl("button", { type: "button", text: "\u5728\u5916\u90E8\u6D4F\u89C8\u5668\u6253\u5F00\u5B98\u7F51\u641C\u7D22" }).addEventListener("click", async () => {
+      try {
+        const { shell } = require("electron");
+        await shell.openExternal(url);
+      } catch {
+        this.status.setText("\u65E0\u6CD5\u6253\u5F00\u7CFB\u7EDF\u9ED8\u8BA4\u6D4F\u89C8\u5668\u3002");
+      }
+    });
     actions.createEl("button", { type: "button", text: "\u66F4\u6362\u641C\u7D22" }).addEventListener("click", () => {
       this.close();
       this.plugin.openSearch();
@@ -3435,20 +3445,24 @@ var SearchBrowserModal = class extends import_obsidian5.Modal {
       text: "\u6B63\u5728\u6253\u5F00\u5B98\u7F51\u641C\u7D22\u2026",
       attr: { role: "status" }
     });
+    if (!(0, import_obsidian5.requireApiVersion)("1.8.3")) {
+      this.status.setText("\u5185\u5D4C\u641C\u7D22\u9700\u8981\u684C\u9762\u7248 Obsidian 1.8.3 \u6216\u66F4\u65B0\u7248\u672C\u3002\u8BF7\u5728\u5916\u90E8\u6D4F\u89C8\u5668\u6253\u5F00\u5B98\u7F51\u641C\u7D22\u3002");
+      return;
+    }
     const guest = this.contentEl.ownerDocument.createElement("webview");
     guest.addClass("webnovel-search-guest");
     guest.setAttribute("aria-label", `${searchProviders[this.provider].name}\u5B98\u7F51`);
     guest.setAttribute("partition", searchPartition);
     guest.setAttribute("webpreferences", "sandbox=yes,contextIsolation=yes,nodeIntegration=no,webSecurity=yes");
-    if (!(0, import_obsidian5.requireApiVersion)("1.8.3") || typeof guest.executeJavaScript !== "function" || typeof guest.getURL !== "function") {
-      this.status.setText("\u5B98\u7F51\u641C\u7D22\u7A97\u53E3\u9700\u8981\u684C\u9762\u7248 Obsidian 1.8.3 \u6216\u66F4\u65B0\u7248\u672C\u3002");
+    if (typeof guest.executeJavaScript !== "function" || typeof guest.getURL !== "function") {
+      this.status.setText("\u5F53\u524D Obsidian \u65E0\u6CD5\u663E\u793A\u5185\u5D4C\u7F51\u9875\u3002\u8BF7\u5728\u5916\u90E8\u6D4F\u89C8\u5668\u6253\u5F00\u5B98\u7F51\u641C\u7D22\u3002");
       return;
     }
     try {
       const { ipcRenderer } = require("electron");
       ipcRenderer.send("create-browser-session", searchPartition, false);
     } catch {
-      this.status.setText("\u5F53\u524D Obsidian \u65E0\u6CD5\u521D\u59CB\u5316\u5B98\u7F51\u641C\u7D22\u7A97\u53E3\u3002");
+      this.status.setText("\u5F53\u524D Obsidian \u65E0\u6CD5\u521D\u59CB\u5316\u5185\u5D4C\u641C\u7D22\u3002\u8BF7\u5728\u5916\u90E8\u6D4F\u89C8\u5668\u6253\u5F00\u5B98\u7F51\u641C\u7D22\u3002");
       return;
     }
     this.guest = guest;
@@ -3470,7 +3484,7 @@ var SearchBrowserModal = class extends import_obsidian5.Modal {
       const failure = event;
       if (!failure.isMainFrame || failure.errorCode === -3 || this.guest !== guest) return;
       this.selectedFromSearch = void 0;
-      this.resetPage("\u7F51\u9875\u52A0\u8F7D\u5931\u8D25\u3002\u53EF\u4EE5\u91CD\u65B0\u52A0\u8F7D\uFF0C\u6216\u8FD4\u56DE\u641C\u7D22\u7ED3\u679C\u3002");
+      this.resetPage("\u7F51\u9875\u52A0\u8F7D\u5931\u8D25\u3002\u53EF\u4EE5\u91CD\u65B0\u52A0\u8F7D\u3001\u8FD4\u56DE\u641C\u7D22\u7ED3\u679C\u6216\u5728\u5916\u90E8\u6D4F\u89C8\u5668\u6253\u5F00\u5B98\u7F51\u641C\u7D22\u3002");
       this.updateControls(guest);
     });
     guest.src = url;

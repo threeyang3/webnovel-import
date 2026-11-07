@@ -58,7 +58,7 @@ export function normalizeManualWork(draft: ManualWorkDraft): ManualWorkDraft {
   return {
     title, ...(authors && { authors }), ...(cover && { cover: isHttpUrl(cover) ? new URL(cover).href : cover }), ...(summary && { summary }),
     ...(date && { first_published_at: date }), ...(year !== undefined && { first_published_year: year }),
-    ...(status && { serialization_status: status }), ...(wordCount && { word_count_text: wordCount }),
+    ...(status && status !== 'unknown' && { serialization_status: status }), ...(wordCount && { word_count_text: wordCount }),
     ...(tags && { tags }),
     ...((platform || url || note) && { reference: { ...(platform && { platform }), ...(url && { url }), ...(note && { note }) } }),
   };

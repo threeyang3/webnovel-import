@@ -66,7 +66,7 @@ test('three-way comparison protects manual edits, manual clearing and pre-existi
   assert.deepEqual(result.preserved.filter(field => ['title', 'authors', 'summary'].includes(field)), ['title', 'authors', 'summary']);
 });
 
-test('missing fields and remote unknown status preserve known values with their original observation times', () => {
+test('missing and unknown status preserve known values with their original observation times', () => {
   const first = upsertFrontmatter({}, source({ first_published_year: undefined, last_updated_at: '2026-11-01' }), options).frontmatter;
   assert.equal(first.first_published_year, undefined);
   const known = upsertFrontmatter(first, source({ cover_url: 'https://example.com/cover.jpg', serialization_status: 'completed' }), options).frontmatter;
@@ -98,10 +98,29 @@ test('missing fields and remote unknown status preserve known values with their 
   assert.equal(getSources(recovered)[0].retained_fields?.first_published_year, undefined);
 
   const manualUnknown = upsertFrontmatter(recovered, source({
-    serialization_status: 'unknown', evidence: { serialization_status: 'manual:用户明确选择未知' },
+    serialization_status: 'unknown', evidence: { serialization_status: 'manual:旧版表单选择未知' },
   }), options).frontmatter;
-  assert.equal(manualUnknown.serialization_status, 'unknown');
-  assert.equal(getSources(manualUnknown)[0].serialization_status, 'unknown');
+  assert.equal(manualUnknown.serialization_status, 'ongoing');
+  assert.equal(getSources(manualUnknown)[0].serialization_status, 'ongoing');
+  assert.equal(getSources(manualUnknown)[0].evidence.serialization_status, undefined);
+});
+
+test('a known source fills a legacy manual unknown status while protecting local changes and clears', () => {
+  for (const source_key of ['manual:local', 'manual:qidian:1010868264']) {
+    const oldState = {
+      schema_version: 1, sources: [],
+      adopted: { serialization_status: { source_key, value: 'unknown' } },
+    };
+    const refresh = (status: string) => upsertFrontmatter({
+      serialization_status: status, webnovel_import: oldState,
+    }, source({ serialization_status: 'completed' }), options);
+    const updated = refresh('unknown');
+    assert.equal(updated.frontmatter.serialization_status, 'completed');
+    const state = updated.frontmatter.webnovel_import as typeof oldState;
+    assert.deepEqual(state.adopted.serialization_status, { source_key: 'qidian:1010868264', value: 'completed' });
+    assert.equal(refresh('paused').frontmatter.serialization_status, 'paused');
+    assert.equal(refresh('').frontmatter.serialization_status, '');
+  }
 });
 
 test('manual acquisition and per-field manual evidence survive later remote refreshes', () => {
