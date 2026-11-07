@@ -37,7 +37,7 @@ export class ManualWorkModal extends Modal {
     new Setting(form).setName('首发年份或日期').addText(text =>
       text.setValue(this.publication).setPlaceholder('YYYY 或 YYYY-MM-DD').onChange(value => { this.publication = value.trim(); }));
     new Setting(form).setName('原作状态').addDropdown(dropdown =>
-      dropdown.addOptions({ '': '留空', ongoing: '连载中', completed: '已完结', paused: '暂停', unknown: '未知' })
+      dropdown.addOptions({ '': '未知（留空）', ongoing: '连载中', completed: '已完结', paused: '暂停' })
         .setValue(this.draft.serialization_status ?? '').onChange(value => {
           this.draft.serialization_status = (value || undefined) as ManualWorkDraft['serialization_status'];
         }));

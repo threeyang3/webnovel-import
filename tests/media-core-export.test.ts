@@ -83,15 +83,37 @@ test('HTML reads and legacy retained timestamps lacking original basis do not in
     assert.equal(item.state, 'unverified');
     assert.equal(item.observed_at, undefined);
   }
+  const htmlMetadata = source('html');
+  const editedHtml = toMediaCoreSource({
+    ...htmlMetadata, title: '手改标题', evidence: { ...htmlMetadata.evidence, title: 'manual:用户补填' },
+  }, { now });
+  const htmlEvidence = editedHtml.field_evidence as Record<string, unknown>;
+  assert.deepEqual(editedHtml.observation, { acquired_at: captured, method: 'html' });
+  assert.deepEqual(htmlEvidence['/fields/title'], {
+    state: 'observed', basis: 'manual-entry', observed_at: exported, locator: 'manual:用户补填',
+  });
+  assert.deepEqual(htmlEvidence['/fields/authors'], {
+    state: 'unverified', basis: 'local-document-read', locator: '作品页 .page-header-info .author-name-text',
+  });
+
+  const remoteMetadata = source();
   const legacy = toMediaCoreSource({
-    ...source(), last_updated_at: '3 天前', serialization_status: 'unknown',
+    ...remoteMetadata, title: '旧档手改标题', evidence: { ...remoteMetadata.evidence, title: 'manual:用户补填' },
+    last_updated_at: '3 天前', serialization_status: 'unknown',
     retained_fields: { description: captured },
   }, { archive: true, now });
   const { fields, field_evidence } = legacy as { fields: Record<string, unknown>; field_evidence: Record<string, unknown> };
+  assert.deepEqual(legacy.observation, { acquired_at: exported, method: 'archive' });
   assert.equal(fields.latest_chapter_updated_at, undefined);
   assert.equal(fields.original_status, undefined);
   assert.match(JSON.stringify(legacy.extensions), /3 天前/);
   assert.match(JSON.stringify(legacy.extensions), /retained_fields/);
+  assert.deepEqual(field_evidence['/fields/title'], {
+    state: 'retained', basis: 'manual-entry', locator: 'manual:用户补填',
+  });
+  assert.deepEqual(field_evidence['/fields/authors'], {
+    state: 'retained', basis: 'source-observation', observed_at: captured, locator: '作品页 .page-header-info .author-name-text',
+  });
   assert.deepEqual(field_evidence['/fields/summary'], {
     state: 'retained', basis: 'local-document-read', locator: '作品页 .page-body .page-abstract-content',
   });
@@ -113,17 +135,32 @@ test('a later partial read retains earlier known evidence without changing indep
   assert.equal(evidence['/fields/summary'].observed_at, captured);
 });
 
-test('manual edits keep their own evidence and the managed guard rejects independent writes', () => {
-  const metadata = source('browser');
-  const observation = toMediaCoreSource({
-    ...metadata, title: '手改标题', evidence: { ...metadata.evidence, title: 'manual:用户补填' },
-  }, { now });
-  const evidence = observation.field_evidence as Record<string, unknown>;
-  assert.deepEqual(evidence['/fields/title'], {
-    state: 'observed', basis: 'manual-entry', observed_at: exported, locator: 'manual:用户补填',
-  });
-  assert.deepEqual(evidence['/fields/authors'], {
-    state: 'retained', basis: 'source-observation', observed_at: captured, locator: '作品页 .page-header-info .author-name-text',
+test('live source fields keep their observation when another field is corrected', () => {
+  for (const method of ['remote', 'browser'] as const) {
+    const metadata = source(method);
+    const observation = toMediaCoreSource({
+      ...metadata, title: '手改标题', evidence: { ...metadata.evidence, title: 'manual:用户补填' },
+    }, { now });
+    assert.deepEqual(observation.observation, { acquired_at: captured, method });
+    const evidence = observation.field_evidence as Record<string, unknown>;
+    assert.deepEqual(evidence['/fields/title'], {
+      state: 'observed', basis: 'manual-entry', observed_at: exported, locator: 'manual:用户补填',
+    });
+    assert.deepEqual(evidence['/fields/authors'], {
+      state: 'observed', basis: 'source-observation', observed_at: captured, locator: '作品页 .page-header-info .author-name-text',
+    });
+    assert.deepEqual(evidence['/fields/summary'], {
+      state: 'observed', basis: 'source-observation', observed_at: captured, locator: '作品页 .page-body .page-abstract-content',
+    });
+  }
+});
+
+test('manual input keeps its own evidence and the managed guard rejects independent writes', () => {
+  const metadata = source('manual');
+  const observation = toMediaCoreSource(metadata, { now });
+  assert.deepEqual(observation.observation, { acquired_at: exported, method: 'manual' });
+  assert.deepEqual((observation.field_evidence as Record<string, unknown>)['/fields/title'], {
+    state: 'observed', basis: 'manual-entry', observed_at: exported, locator: metadata.evidence.title,
   });
   const managed = { uid: 'work-kept', rating: 0, webnovel_import: { schema_version: 2, managed_by: 'media-core', sources: [ref] } };
   const before = JSON.stringify(managed);

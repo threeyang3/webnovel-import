@@ -51,6 +51,14 @@ export class SearchBrowserModal extends Modal {
     this.back = actions.createEl('button', { type: 'button', text: '后退' });
     this.reload = actions.createEl('button', { type: 'button', text: '重新加载' });
     this.preview = actions.createEl('button', { type: 'button', text: '预览当前作品' });
+    actions.createEl('button', { type: 'button', text: '在外部浏览器打开官网搜索' }).addEventListener('click', async () => {
+      try {
+        const { shell } = require('electron') as { shell: { openExternal(url: string): Promise<void> } };
+        await shell.openExternal(url);
+      } catch {
+        this.status.setText('无法打开系统默认浏览器。');
+      }
+    });
     actions.createEl('button', { type: 'button', text: '更换搜索' }).addEventListener('click', () => {
       this.close();
       this.plugin.openSearch();
@@ -64,14 +72,18 @@ export class SearchBrowserModal extends Modal {
     this.status = this.contentEl.createEl('p', {
       cls: 'webnovel-status', text: '正在打开官网搜索…', attr: { role: 'status' },
     });
+    if (!requireApiVersion('1.8.3')) {
+      this.status.setText('内嵌搜索需要桌面版 Obsidian 1.8.3 或更新版本。请在外部浏览器打开官网搜索。');
+      return;
+    }
     const guest = this.contentEl.ownerDocument.createElement('webview') as SearchWebview;
     guest.addClass('webnovel-search-guest');
     guest.setAttribute('aria-label', `${searchProviders[this.provider].name}官网`);
     // An in-memory partition keeps these pages separate from Obsidian's persistent Web Viewer session.
     guest.setAttribute('partition', searchPartition);
     guest.setAttribute('webpreferences', 'sandbox=yes,contextIsolation=yes,nodeIntegration=no,webSecurity=yes');
-    if (!requireApiVersion('1.8.3') || typeof guest.executeJavaScript !== 'function' || typeof guest.getURL !== 'function') {
-      this.status.setText('官网搜索窗口需要桌面版 Obsidian 1.8.3 或更新版本。');
+    if (typeof guest.executeJavaScript !== 'function' || typeof guest.getURL !== 'function') {
+      this.status.setText('当前 Obsidian 无法显示内嵌网页。请在外部浏览器打开官网搜索。');
       return;
     }
     try {
@@ -80,7 +92,7 @@ export class SearchBrowserModal extends Modal {
       const { ipcRenderer } = require('electron') as { ipcRenderer: { send(channel: string, partition: string, adblock: boolean): void } };
       ipcRenderer.send('create-browser-session', searchPartition, false);
     } catch {
-      this.status.setText('当前 Obsidian 无法初始化官网搜索窗口。');
+      this.status.setText('当前 Obsidian 无法初始化内嵌搜索。请在外部浏览器打开官网搜索。');
       return;
     }
     this.guest = guest;
@@ -102,7 +114,7 @@ export class SearchBrowserModal extends Modal {
       const failure = event as GuestLoadFailure;
       if (!failure.isMainFrame || failure.errorCode === -3 || this.guest !== guest) return;
       this.selectedFromSearch = undefined;
-      this.resetPage('网页加载失败。可以重新加载，或返回搜索结果。');
+      this.resetPage('网页加载失败。可以重新加载、返回搜索结果或在外部浏览器打开官网搜索。');
       this.updateControls(guest);
     });
     guest.src = url;

@@ -151,7 +151,8 @@ test('manual work has an independent identity, no platform source, and a local r
 
 test('queued manual duplicate prompts and an authorless manual Work can receive a formal source with local clears protected', async () => {
   const { importer, notes, counters } = fixture();
-  const draft = { title: metadata.title, summary: '人工简介', cover: 'https://example.test/manual.png' };
+  const draft = { title: metadata.title, summary: '人工简介', cover: 'https://example.test/manual.png',
+    serialization_status: 'unknown' as const };
   const first = importer.createManual(draft);
   const duplicate = importer.createManual(draft);
   const file = await first;
@@ -164,6 +165,8 @@ test('queued manual duplicate prompts and an authorless manual Work can receive 
 
   const mockedFile = file as unknown as MockFile;
   const fm = JSON.parse(notes.get(mockedFile)!.split('---\n')[1]);
+  assert.equal(fm.serialization_status, undefined);
+  assert.equal(fm.webnovel_import.adopted.serialization_status, undefined);
   const body = '\n我自己的正文\n';
   fm.title = '人工编辑的标题';
   fm.summary = '';
@@ -171,7 +174,7 @@ test('queued manual duplicate prompts and an authorless manual Work can receive 
   fm.progress = 12;
   fm.review = '我的短评';
   notes.set(mockedFile, `---\n${JSON.stringify(fm)}\n---\n${body}`);
-  const remote = { ...metadata, description: '站点简介' };
+  const remote = { ...metadata, description: '站点简介', serialization_status: 'completed' as const };
   const attached = await importer.import(remote, file);
   const repeated = await importer.import(remote);
   assert.equal(attached.file, file);
@@ -182,6 +185,7 @@ test('queued manual duplicate prompts and an authorless manual Work can receive 
   assert.equal(saved.uid, fm.uid);
   assert.equal(saved.title, fm.title);
   assert.equal(saved.summary, '');
+  assert.equal(saved.serialization_status, 'completed');
   assert.equal(saved.cover, fm.cover);
   assert.deepEqual(saved.authors, metadata.authors);
   assert.equal(saved.rating, 0);

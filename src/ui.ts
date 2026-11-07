@@ -147,7 +147,10 @@ export class SingleImportModal extends Modal {
     new Setting(this.form).setName('封面链接').addText(text => text.setValue(edited.cover_url ?? '').onChange(value => set('cover_url', value.trim() || undefined)));
     let yearText = edited.first_published_year?.toString().padStart(4, '0') ?? '';
     new Setting(this.form).setName('网文首发年份').setDesc('未知时留空；不以最近更新或纸书出版年份代替。').addText(text => text.setValue(yearText).setPlaceholder('未知').onChange(value => { yearText = value.trim(); }));
-    new Setting(this.form).setName('连载状态').addDropdown(dropdown => dropdown.addOptions({ unknown: '未知', ongoing: '连载中', completed: '已完结', paused: '暂停' }).setValue(edited.serialization_status ?? 'unknown').onChange(value => set('serialization_status', value)));
+    new Setting(this.form).setName('连载状态').addDropdown(dropdown => dropdown
+      .addOptions({ '': '未知（留空）', ongoing: '连载中', completed: '已完结', paused: '暂停' })
+      .setValue(edited.serialization_status === 'unknown' ? '' : edited.serialization_status ?? '')
+      .onChange(value => set('serialization_status', value || undefined)));
     if (edited.last_updated_at) this.form.createEl('p', { text: `来源最近更新：${edited.last_updated_at}`, cls: 'setting-item-description' });
     if (edited.word_count_text) this.form.createEl('p', { text: `来源显示字数：${edited.word_count_text}`, cls: 'setting-item-description' });
     const readForm = () => {

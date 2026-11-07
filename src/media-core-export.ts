@@ -52,10 +52,9 @@ export function toMediaCoreSource(
   const locators = Object.fromEntries(Object.entries(source.evidence ?? {}).filter(([, value]) => typeof value === 'string'));
   const acquisition = ['remote', 'html', 'browser', 'manual'].includes(source.acquisition) ? source.acquisition : undefined;
   const currentTime = optionalValue(source.fetched_at, normalizeTimestamp);
-  const manual = !archive && (acquisition === 'manual'
-    || Object.values(locators).some(locator => locator.startsWith('manual:')));
-  const method = manual ? 'manual' : archive || !currentTime || !acquisition ? 'archive' : acquisition;
-  const acquired_at = method === 'archive' || manual ? normalizeTimestamp(now()) : currentTime;
+  const method = archive || !acquisition || (!currentTime && acquisition !== 'manual') ? 'archive' : acquisition;
+  let exportedAt = method === 'archive' || method === 'manual' ? normalizeTimestamp(now()) : undefined;
+  const acquired_at = exportedAt ?? currentTime;
   const warnings = Array.isArray(source.warnings) ? source.warnings.filter(value => typeof value === 'string') : [];
   const fields: Record<string, unknown> = {};
   const field_evidence: Record<string, FieldEvidence> = {};
@@ -73,7 +72,9 @@ export function toMediaCoreSource(
       return { state: 'retained', basis, ...(observed_at ? { observed_at } : {}), ...(locator ? { locator } : {}) };
     }
     if (!archive && isManual) {
-      return { state: 'observed', basis: 'manual-entry', observed_at: acquired_at, ...(locator ? { locator } : {}) };
+      // The user confirms these edits at export. The original capture time still belongs to the source fields.
+      exportedAt ??= normalizeTimestamp(now());
+      return { state: 'observed', basis: 'manual-entry', observed_at: exportedAt, ...(locator ? { locator } : {}) };
     }
     if (isManual && acquisition !== 'manual') {
       // Independent schema 1 didn't record a timestamp for edits mixed into a fetched snapshot.
@@ -82,7 +83,7 @@ export function toMediaCoreSource(
     if (!currentTime || !acquisition || acquisition === 'html') {
       return { state: 'unverified', basis: 'local-document-read', ...(locator ? { locator } : {}) };
     }
-    return { state: archive || manual ? 'retained' : 'observed',
+    return { state: archive ? 'retained' : 'observed',
       basis: isManual ? 'manual-entry' : 'source-observation', observed_at: currentTime,
       ...(locator ? { locator } : {}) };
   };

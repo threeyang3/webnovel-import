@@ -67,7 +67,7 @@ function isManualField(source: SourceMetadata, field: string): boolean {
 
 function isMissingSourceField(source: SourceMetadata, field: typeof metadataFields[number]): boolean {
   return isEmpty(source[field]) ||
-    (field === 'serialization_status' && source[field] === 'unknown' && !isManualField(source, field));
+    (field === 'serialization_status' && source[field] === 'unknown');
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
@@ -94,8 +94,9 @@ function mergeSnapshot(previous: SourceMetadata | undefined, incoming: SourceMet
   const retainedFields = { ...previous?.retained_fields };
   const retainedAcquisitions = { ...previous?.retained_field_acquisitions };
   if (incoming.tags) snapshot.tags = [...incoming.tags];
-  if (incoming.serialization_status === 'unknown' && !isManualField(incoming, 'serialization_status')) {
+  if (isMissingSourceField(incoming, 'serialization_status')) {
     delete snapshot.serialization_status;
+    delete snapshot.evidence.serialization_status;
   }
   for (const field of metadataFields) {
     if (isMissingSourceField(incoming, field) && previous && !isMissingSourceField(previous, field)) {
@@ -165,15 +166,17 @@ export function upsertFrontmatter(
   ];
 
   for (const { field, sourceField, value } of candidates) {
-    if (isEmpty(value)) continue;
+    if (isEmpty(value) || (field === 'serialization_status' && value === 'unknown')) continue;
     const evidence = incoming.evidence[sourceField];
     const manual = isManualField(incoming, sourceField);
-    if (field === 'serialization_status' && value === 'unknown' && !manual) continue;
     const previous = adoptionRecords[field];
-    const mayUpdate = previous
+    // Earlier manual forms stored "unknown" as an adoption. Only release that unchanged placeholder.
+    const unchangedUnknown = field === 'serialization_status' && frontmatter[field] === 'unknown'
+      && previous?.value === 'unknown' && previous.source_key.startsWith('manual:');
+    const mayUpdate = unchangedUnknown || (previous
       ? (previous.source_key === key || (manual && previous.source_key === `manual:${key}`)) &&
         sameValue(frontmatter[field], previous.value)
-      : isEmpty(frontmatter[field]);
+      : isEmpty(frontmatter[field]));
 
     if (!mayUpdate) {
       preserved.push(field);
