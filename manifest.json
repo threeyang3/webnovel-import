@@ -1,9 +1,9 @@
 {
   "id": "webnovel-import",
   "name": "Webnovel Import",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minAppVersion": "1.5.0",
-  "description": "从起点、番茄作品链接导入网文元数据，保护本地个人记录。开发预览版。",
+  "description": "搜索并导入起点、番茄、七猫和晋江作品，支持手动建档与 Media Core 预览。",
   "author": "threeyang3",
   "isDesktopOnly": true
 }

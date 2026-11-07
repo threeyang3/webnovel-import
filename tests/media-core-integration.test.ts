@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { App } from 'obsidian';
-import { openMediaCorePreview, resolveImportRoute } from '../src/media-core-integration';
+import { openMediaCorePreview, resolveImportRoute, resolveManualWorkRoute } from '../src/media-core-integration';
 
 const id = 'media-core';
 const source = { protocol: 'media-source/v2', provider: 'fanqie', id: '7143038691944959011' };
@@ -50,4 +50,27 @@ test('the current intake receives the v2 object and optional explicit UID and it
     await assert.rejects(openMediaCorePreview(incompatible, 'auto', source), /不支持一键导入/);
   }
   assert.equal(calls, 1);
+});
+
+test('manual intake checks its separate capability and receives a draft without a platform identity', async () => {
+  const draft = { title: '已下架作品' };
+  const intake = { apiVersion: 1, sourceSchema: source.protocol, async openSourcePreview() {} };
+  const oldCore = withCore({ plugin: { sourceIntake: intake } });
+  assert.equal(resolveImportRoute(oldCore, 'auto').kind, 'core');
+  assert.match(resolveManualWorkRoute(oldCore, 'auto').kind, /independent/);
+  const onAccepted = () => {};
+  const sourceIntake = {
+    ...intake, manualWorkApiVersion: 1,
+    async openManualWork(input: unknown, options: unknown) {
+      assert.equal(this, sourceIntake);
+      assert.deepEqual(input, draft);
+      assert.deepEqual(options, { onAccepted });
+    },
+  };
+  const app = withCore({ plugin: { sourceIntake } });
+  const route = resolveManualWorkRoute(app, 'auto');
+  assert.equal(route.kind, 'core');
+  if (route.kind === 'core') await route.openPreview(draft, { onAccepted });
+  assert.equal(resolveManualWorkRoute(app, 'independent').kind, 'independent');
+  assert.equal(resolveManualWorkRoute(withCore({ enabled: false, plugin: { sourceIntake } }), 'auto').kind, 'independent');
 });

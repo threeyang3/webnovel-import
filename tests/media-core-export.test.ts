@@ -46,6 +46,36 @@ test('ordinary Fanqie parser output retains string IDs, full summary and precise
   assert.deepEqual(normalizeSourceV2(observation), observation);
 });
 
+test('four providers export versioned extensions and preserve platform-specific time evidence', () => {
+  for (const [url, locator, chapterTime] of [
+    ['https://www.qidian.com/book/100/', '#book-detail .update-time', '2025-10-31T22:10'],
+    ['https://fanqienovel.com/page/000000000000000000001', '.info-last-time', '2025-10-31T22:10'],
+    ['https://www.qimao.com/shuku/200/', '.book-information .update-info .update-time', '2025-10-31T22:10'],
+    ['https://m.jjwxc.net/book2/300', 'body > meta[itemprop="dateModified"]', undefined],
+    ['https://www.jjwxc.net/onebook.php?novelid=300',
+      'tr[itemprop~="newestChapter"] td[title*="章节首发时间"] 的可见更新时间', '2025-10-31T22:10'],
+  ] as const) {
+    const ref = parseBookUrl(url);
+    const metadata: SourceMetadata = {
+      ...ref, title: '作品', authors: ['作者'], acquisition: 'browser', fetched_at: captured,
+      latest_chapter: '测试最新章', word_count_text: '12.1万字', last_updated_at: '2025-10-31 22:10',
+      evidence: { last_updated_at: locator }, warnings: [],
+    };
+    const observation = normalizeSourceV2(toMediaCoreSource(metadata, { now }));
+    assert.equal(observation.id, ref.id);
+    assert.equal(observation.url, ref.url);
+    const fields = observation.fields as Record<string, unknown>;
+    assert.equal(fields.year, undefined);
+    assert.equal(fields.release_date, undefined);
+    assert.equal(fields.latest_chapter_updated_at, chapterTime);
+    const extensions = observation.extensions as Record<string, Record<string, unknown>>;
+    const extension = extensions[ref.provider];
+    assert.equal(extension.version, 1);
+    assert.equal(extension.word_count_text, '12.1万字');
+    assert.deepEqual(extension.original, { last_updated_at: '2025-10-31 22:10' });
+  }
+});
+
 test('HTML reads and legacy retained timestamps lacking original basis do not invent observations', () => {
   const htmlObservation = toMediaCoreSource(source('html'), { now });
   assert.deepEqual(htmlObservation.observation, { acquired_at: captured, method: 'html' });

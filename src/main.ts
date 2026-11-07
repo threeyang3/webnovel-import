@@ -8,16 +8,24 @@ import { makeBookmarklet, parseCapturePayload } from './browser-capture';
 import { parseBookUrl } from './sources';
 import { sourceKey } from './types';
 import { openMediaCorePreview, resolveImportRoute } from './media-core-integration';
+import { ManualWorkModal } from './manual-ui';
+import { SearchModal } from './search-ui';
+import { SearchBrowserModal } from './search-browser';
+import type { SearchProvider } from './search';
 
 export default class WebnovelPlugin extends Plugin {
   settings: ImportSettings = { ...DEFAULT_SETTINGS };
   importer!: Importer;
+  searchKeyword = '';
+  private searchBrowser?: SearchBrowserModal;
   private browserTarget?: { key: string; file?: TFile };
 
   async onload(): Promise<void> {
     this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
     this.importer = new Importer(this.app, () => this.settings);
-    this.addCommand({ id: 'import-book', name: '从作品链接导入网文', callback: () => new SingleImportModal(this).open() });
+    this.addCommand({ id: 'search-works', name: '搜索网文作品', callback: () => this.openSearch() });
+    this.addCommand({ id: 'import-book', name: '从链接导入网文作品', callback: () => new SingleImportModal(this).open() });
+    this.addCommand({ id: 'manual-work', name: '手动添加网文作品', callback: () => new ManualWorkModal(this).open() });
     this.addCommand({ id: 'import-links', name: '批量导入网文作品链接', callback: () => new BatchImportModal(this).open() });
     this.addCommand({ id: 'import-browser-capture', name: '从浏览器采集结果导入', callback: () => void this.receiveBrowserCapture() });
     this.registerObsidianProtocolHandler('webnovel-import', params => {
@@ -30,7 +38,7 @@ export default class WebnovelPlugin extends Plugin {
       });
     });
     this.addCommand({
-      id: 'attach-source', name: '给当前作品关联起点或番茄来源',
+      id: 'attach-source', name: '给当前作品关联正式网文来源',
       checkCallback: checking => {
         const file = this.activeMarkdown();
         if (!file) return false;
@@ -44,7 +52,7 @@ export default class WebnovelPlugin extends Plugin {
         const file = this.activeMarkdown();
         if (!file || this.importRoute().kind !== 'independent') return false;
         const state = this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import;
-        if (!state || isCoreManaged(state)) return false;
+        if (!state || isCoreManaged(state) || !Array.isArray(state.sources) || !state.sources.length) return false;
         if (!checking) void this.refresh(file);
         return true;
       },
@@ -53,12 +61,26 @@ export default class WebnovelPlugin extends Plugin {
       id: 'export-current-to-media-core', name: '将当前网文交给 Media Core',
       checkCallback: checking => {
         const file = this.activeMarkdown();
-        if (!file || this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import?.schema_version !== 1) return false;
+        const state = file && this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import;
+        if (!file || state?.schema_version !== 1 || !Array.isArray(state.sources) || !state.sources.length) return false;
         if (!checking) new ArchiveExportModal(this, file).open();
         return true;
       },
     });
     this.addSettingTab(new WebnovelSettings(this));
+  }
+
+  openSearch(): void { new SearchModal(this).open(); }
+
+  openSearchBrowser(provider: SearchProvider, keyword: string): void {
+    this.searchBrowser?.close();
+    this.searchBrowser = new SearchBrowserModal(this, provider, keyword);
+    this.searchBrowser.open();
+  }
+
+  onunload(): void {
+    this.searchBrowser?.close();
+    this.searchBrowser = undefined;
   }
 
   private activeMarkdown(): TFile | null {
@@ -83,6 +105,15 @@ export default class WebnovelPlugin extends Plugin {
     const ref = parseBookUrl(input);
     this.browserTarget = { key: sourceKey(ref), file: target };
     window.open(ref.url, '_blank', 'noopener,noreferrer');
+  }
+
+  async copyCaptureBookmarklet(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(makeBookmarklet(this.app.vault.getName()));
+      new Notice('已复制“采集当前网文作品”。请粘贴到浏览器书签的网址栏，并保留开头的 javascript:。', 10000);
+    } catch (error) {
+      new Notice(`复制失败：${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async receiveBrowserCapture(expected?: { provider: string; id: string; capturedAt?: string }): Promise<void> {
@@ -131,7 +162,7 @@ class WebnovelSettings extends PluginSettingTab {
   display(): void {
     this.containerEl.empty();
     this.containerEl.createEl('h2', { text: 'Webnovel Import' });
-    this.containerEl.createEl('p', { text: `作品元数据导入器 · ${this.plugin.manifest.version} 开发预览。起点支持浏览器页面采集；普通 HTTP 获取仍可能遇到验证页。` });
+    this.containerEl.createEl('p', { text: `作品元数据导入器 · ${this.plugin.manifest.version} 开发预览。支持起点、番茄、七猫与晋江的搜索和作品采集。` });
     new Setting(this.containerEl).setName('导入模式')
       .setDesc('自动模式优先使用 Media Core；确认未安装时才独立保存。已安装但不可用时，可以复制规范来源 JSON 或在这里明确切换模式。')
       .addDropdown(dropdown => dropdown.addOptions({ auto: '自动', 'media-core': 'Media Core', independent: '独立' })
@@ -139,14 +170,9 @@ class WebnovelSettings extends PluginSettingTab {
           this.plugin.settings.importMode = value as ImportMode;
           await this.plugin.saveSettings();
         }));
-    new Setting(this.containerEl).setName('起点浏览器采集书签')
-      .setDesc('复制后，在浏览器新建书签，把内容粘贴到书签的网址栏。正常打开起点作品页后点击书签，即可把资料带回当前 Vault 的导入预览。只读取作品资料，通过本机剪贴板传递。')
-      .addButton(button => button.setButtonText('复制采集书签').onClick(async () => {
-        try {
-          await navigator.clipboard.writeText(makeBookmarklet(this.plugin.app.vault.getName()));
-          new Notice('已复制。请将其粘贴到浏览器书签的网址栏，并保留开头的 javascript:。', 10000);
-        } catch (error) { new Notice(`复制失败：${error instanceof Error ? error.message : String(error)}`); }
-      }));
+    new Setting(this.containerEl).setName('采集当前网文作品')
+      .setDesc('把复制的内容用作浏览器书签的网址。打开起点、七猫或晋江作品详情页后点击书签，资料通过本机剪贴板返回当前 Vault 的预览。番茄可用作品链接获取。')
+      .addButton(button => button.setButtonText('复制采集书签').onClick(() => void this.plugin.copyCaptureBookmarklet()));
     new Setting(this.containerEl).setName('新作品目录').setDesc('相对于当前 Vault。既有文件保持原路径。').addText(text => text.setValue(this.plugin.settings.outputFolder).onChange(async value => {
       try { this.plugin.settings.outputFolder = folderPath(value); await this.plugin.saveSettings(); }
       catch { /* Keep the last valid setting while the path is being typed. */ }

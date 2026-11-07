@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DOMParser as TestDOMParser } from 'linkedom';
-import { getSourceAdapter, parseBookUrl, parseSourceHtml } from '../src/sources';
+import { decodeHtmlBytes, getSourceAdapter, parseBookUrl, parseSourceHtml } from '../src/sources';
 
 Object.defineProperty(globalThis, 'DOMParser', { value: TestDOMParser, configurable: true });
 
@@ -153,32 +153,170 @@ test('registry rejects unknown sources and cross-platform identities instead of 
   assert.equal(getSourceAdapter('fanqie').browserCapture, undefined);
 });
 
-test('built bookmarklet uses adapter selectors and produces a valid capture with canonical identity', async () => {
+test('normalizes Qimao and Jinjiang detail URLs, rejecting search, chapter and ambiguous links', () => {
+  const id = '000000000000000000001';
+  assert.deepEqual(parseBookUrl(`http://www.qimao.com/shuku/${id}?foo=bar`), {
+    provider: 'qimao', id, url: `https://www.qimao.com/shuku/${id}/`,
+  });
+  const novel = { provider: 'jjwxc', id, url: `https://www.jjwxc.net/onebook.php?novelid=${id}` };
+  assert.deepEqual(parseBookUrl(`${novel.url}&foo=bar`), novel);
+  assert.deepEqual(parseBookUrl(`https://m.jjwxc.net/book2/${id}/`), novel);
+  for (const url of [
+    'https://www.qimao.com/search/index/?keyword=123', 'https://www.qimao.com/shuku/123-456/',
+    'https://www.qimao.com/shuku/a-123/', 'https://www.qimao.com.example/shuku/123/',
+    'https://my.jjwxc.net/search.php?novelid=123', 'https://www.jjwxc.net/onebook.php?novelid=123&chapterid=1',
+    'https://www.jjwxc.net/onebook.php?novelid=123&novelid=456', 'https://m.jjwxc.net/book2/123/1',
+  ]) assert.throws(() => parseBookUrl(url), /作品详情页/);
+});
+
+// Synthetic metadata in the observed official desktop and mobile layouts.
+const qimaoRef = parseBookUrl('https://www.qimao.com/shuku/195958/');
+const qimaoDetail = `<!doctype html><html><body><div class="book-information clearfix left">
+  <div class="wrap-pic"><img src="https://cdn.qimao.com/bookimg/zww/upload/readerCover/1/test.jpg"></div>
+  <div class="wrap-txt"><div class="title"><span class="txt">七猫测试书</span></div>
+  <div class="sub-title"><span class="txt">作者：<em><a href="/zuozhe/test">测试作者</a></em></span></div>
+  <div class="tags-wrap"><span class="qm-tag">连载中</span><span class="qm-tag">签约作品</span>
+  <a href="/shuku/a-1">都市</a><a href="/shuku/a-2">都市修真</a></div>
+  <div class="statistics-wrap"><span class="txt">21.3万字</span><span class="txt">10万人气</span></div>
+  <div class="update-info"><div class="update-chapter-title"><a href="/shuku/195958-123/">测试最新章</a></div>
+  <span class="update-time">2026-11-07 12:30:00</span></div></div></div>
+  <div class="book-introduction"><p class="intro">测试简介。<br>在 2022 年发生。<script>throw '不执行';</script></p>
+  <div>小说正文不得作为简介。</div></div>
+  <section><a href="/shuku/999-100/">推荐另一作品</a><img src="https://example.com/avatar.jpg"></section></body></html>`;
+
+test('extracts Qimao detail metadata from the identified work header and synopsis', () => {
+  const book = parseSourceHtml(qimaoDetail, qimaoRef, 'browser');
+  assert.equal(book.title, '七猫测试书');
+  assert.deepEqual(book.authors, ['测试作者']);
+  assert.equal(book.description, '测试简介。\n在 2022 年发生。');
+  assert.equal(book.cover_url, 'https://cdn.qimao.com/bookimg/zww/upload/readerCover/1/test.jpg');
+  assert.deepEqual(book.tags, ['都市', '都市修真']);
+  assert.equal(book.serialization_status, 'ongoing');
+  assert.equal(book.word_count_text, '21.3万字');
+  assert.equal(book.latest_chapter, '测试最新章');
+  assert.equal(book.last_updated_at, '2026-11-07 12:30:00');
+  assert.equal(book.first_published_year, undefined);
+  assert.match(book.evidence.identity, /update-chapter-title/);
+  assert.equal(parseSourceHtml(qimaoDetail.replace('bookimg/zww/upload/readerCover/1/test.jpg', 'default.jpg'),
+    qimaoRef).cover_url, undefined);
+  assert.throws(() => parseSourceHtml(qimaoDetail.replace('/shuku/195958-123/', '/shuku/999-123/'), qimaoRef), /不一致/);
+  assert.throws(() => parseSourceHtml(qimaoDetail.replace('class="update-info"', 'class="recommendations"'), qimaoRef), /作品标识/);
+});
+
+const jjwxcRef = parseBookUrl('https://www.jjwxc.net/onebook.php?novelid=1661930');
+const jjwxcDesktop = `<!doctype html><html><body itemtype="http://schema.org/Novel">
+  <meta itemprop="dateModified" content="2024-04-08 18:30:25">
+  <table><tr><td class="sptd"><h1 class="bigtext" itemprop="name"><span itemprop="articleSection">晋江测试文</span></h1>
+  <h2>作者：<span itemprop="author">测试作者</span></h2></td></tr>
+  <tr><td class="readtd"><a href="https://m.jjwxc.net/book2/1661930">手机版</a></td></tr>
+  <tr><td><div class="smallreadbody">
+  <img itemprop="image" class="noveldefaultimage" src="https://i9-static.jjwxc.net/novelimage.php?novelid=1661930&amp;coverid=20"
+    _src="https://i9-static.jjwxc.net/novelimage.php?novelid=1661930&amp;coverid=20">
+  <div id="novelintro" itemprop="description">测试文案。<br>第二行提到 2020 年。</div>
+  <a href="//www.jjwxc.net/bookbase.php?bq=262">轻松</a></div>
+  <span itemprop="genre">原创-言情-近代现代-爱情</span>
+  <span itemprop="updataStatus">完结</span><span itemprop="wordCount">58004字</span></td></tr>
+  <tr itemprop="newestChapter"><td itemprop="headline"><a itemprop="url" href="/onebook.php?novelid=1661930&amp;chapterid=20">测试最新章</a></td>
+  <td title="章节首发时间：2023-01-01 00:00:00">2024-04-08 18:30:25 &nbsp;*最新更新</td></tr>
+  </table><section><a href="/onebook.php?novelid=999">其他作品</a></section></body></html>`;
+
+const jjwxcMobile = `<!doctype html><html><head>
+  <meta name="description" content="测试文案|最新更新:2024-04-08 18:30:25|">
+  </head><body><div class="b module">
+  <h2 class="big"><span class="uninterested-author" data-novelid="1661930" data-novelname="晋江测试文" data-authorname="测试作者"></span></h2></div>
+  <div id="info">
+  <ul id="left"><li class="authorname-content">作者：<a href="/wapauthor/1">测试作者</a></li>
+  <li>类型：原创-言情-近代现代-爱情</li><li>标签：<a href="/assort/262">轻松</a></li>
+  <li>状态：已签约/连载/58004字</li></ul></div>
+  <div class="b module"><ul><li id="novelintro">缩略文案
+  <span id="novelintro_whole">测试文案。<br>第二行提到 2020 年。</span></li></ul></div></body></html>`;
+
+test('extracts Jinjiang desktop and mobile works without borrowing chapter dates or default covers', () => {
+  for (const [html, state, chapter] of [
+    [jjwxcDesktop, 'completed', '测试最新章'],
+    [jjwxcMobile, 'ongoing', undefined],
+  ] as const) {
+    const book = parseSourceHtml(html, jjwxcRef, 'html');
+    assert.equal(book.title, '晋江测试文');
+    assert.deepEqual(book.authors, ['测试作者']);
+    assert.equal(book.description, '测试文案。\n第二行提到 2020 年。');
+    assert.deepEqual(book.tags, ['原创-言情-近代现代-爱情', '轻松']);
+    assert.equal(book.serialization_status, state);
+    assert.equal(book.word_count_text, '58004字');
+    assert.equal(book.latest_chapter, chapter);
+    assert.equal(book.last_updated_at, '2024-04-08 18:30:25');
+    assert.equal(book.first_published_at, undefined);
+    assert.equal(book.cover_url, undefined);
+  }
+  assert.throws(() => parseSourceHtml(jjwxcDesktop.replace('m.jjwxc.net/book2/1661930', 'm.jjwxc.net/book2/999'),
+    jjwxcRef), /不一致/);
+  assert.throws(() => parseSourceHtml(jjwxcMobile.replace('data-novelid="1661930"', 'data-novelid="999"'),
+    jjwxcRef), /不一致/);
+  assert.throws(() => parseSourceHtml('<a href="https://m.jjwxc.net/book2/1661930">搜索结果</a>',
+    jjwxcRef), /作品标识/);
+  const customCover = 'https://i0-static.jjwxc.net/authorimagespace.php?path=test&imageName=cover.jpg';
+  const coverPage = jjwxcDesktop.replace('src="https://i9-static.jjwxc.net/novelimage.php?novelid=1661930&amp;coverid=20"',
+    `src="${customCover}"`);
+  assert.equal(parseSourceHtml(coverPage, jjwxcRef).cover_url, customCover);
+  const wrongDefaultId = coverPage.replace('novelimage.php?novelid=1661930', 'novelimage.php?novelid=999');
+  assert.equal(parseSourceHtml(wrongDefaultId, jjwxcRef).cover_url, undefined);
+  assert.match(parseSourceHtml(jjwxcDesktop, jjwxcRef).evidence.last_updated_at, /newestChapter.*可见更新时间/);
+});
+
+test('keeps short Jinjiang mobile synopsis text when there is no expanded blurb', () => {
+  const short = jjwxcMobile.replace(/<li id="novelintro">[\s\S]*?<\/li>/,
+    '<li id="novelintro">简介：\n第一段。<br><br>第二段。<button>展开</button><script>throw "不执行"</script></li>');
+  const book = parseSourceHtml(short, jjwxcRef, 'html');
+  assert.equal(book.description, '第一段。\n\n第二段。');
+  assert.match(book.evidence.description, /直接文本/);
+});
+
+test('reads Jinjiang GB18030 bytes and UTF-8 browser saves retaining their legacy charset tag', () => {
+  const head = '<meta http-equiv="Content-Type" content="text/html; charset=gb18030">';
+  const utf8 = new TextEncoder();
+  const gb = new Uint8Array([...utf8.encode(head), 0xbd, 0xfa, 0xbd, 0xad]);
+  assert.equal(decodeHtmlBytes(gb.buffer), `${head}晋江`);
+  assert.equal(decodeHtmlBytes(gb.buffer.slice(-4), 'text/html; charset=gb18030'), '晋江');
+  assert.equal(decodeHtmlBytes(utf8.encode(`${head}晋江`).buffer), `${head}晋江`);
+});
+
+test('built bookmarklet uses the live document and returns a validated capture for each supported platform', async () => {
   const { build } = await import('esbuild');
   const { parseHTML } = await import('linkedom');
   const { createContext, runInContext } = await import('node:vm');
   const { parseCapturePayload } = await import('../src/browser-capture');
   const bundle = await build({ entryPoints: ['src/bookmarklet.ts'], bundle: true,
     format: 'iife', globalName: 'WebnovelBrowser', write: false });
-  let payload = '';
-  let uri = '';
-  const context = createContext({
-    document: parseHTML(qidianVisible).document, DOMParser: TestDOMParser, URL, URLSearchParams,
-    location: { href: 'https://m.qidian.com/book/1010868264', assign: (value: string) => { uri = value; } },
-    navigator: { clipboard: { writeText: async (value: string) => { payload = value; } } },
-    window: { alert: (message: string) => { throw new Error(message); } },
-  });
-  runInContext(bundle.outputFiles[0].text, context);
   const vault = 'Webnovel Intake QA + 测试';
-  await runInContext(`WebnovelBrowser.capture(${JSON.stringify(vault)})`, context);
-  const result = parseCapturePayload(payload);
-  assert.equal(result.title, '页面书名');
-  assert.equal(result.cover_url, 'https://bookcover.yuewen.com/qdbimg/349573/1010868264/600.webp');
-  assert.equal(result.description, '测试简介第一段。\n第二段提到2020年。\n第三段。');
-  assert.equal(result.url, qidianRef.url);
-  // Obsidian percent-decodes values without treating "+" as a space.
-  const rawVault = new URL(uri).search.slice(1).split('&').find(part => part.startsWith('vault='));
-  assert.equal(rawVault, `vault=${encodeURIComponent(vault)}`);
-  assert.equal(new URL(uri).searchParams.get('id'), qidianRef.id);
-  assert.equal(new URL(uri).searchParams.get('capturedAt'), result.fetched_at);
+  for (const [html, url, title] of [
+    [qidianVisible, 'https://m.qidian.com/book/1010868264', '页面书名'],
+    [qimaoDetail, qimaoRef.url, '七猫测试书'],
+    [jjwxcDesktop, jjwxcRef.url, '晋江测试文'],
+    [jjwxcMobile, 'https://m.jjwxc.net/book2/1661930', '晋江测试文'],
+  ]) {
+    let payload = '';
+    let uri = '';
+    const context = createContext({
+      document: parseHTML(html).document, URL, URLSearchParams,
+      location: { href: url, assign: (value: string) => { uri = value; } },
+      navigator: { clipboard: { writeText: async (value: string) => { payload = value; } } },
+      window: { alert: (message: string) => { throw new Error(message); } },
+    });
+    runInContext(bundle.outputFiles[0].text, context);
+    await runInContext(`WebnovelBrowser.capture(${JSON.stringify(vault)})`, context);
+    const callback = new URL(uri);
+    const ref = parseBookUrl(url);
+    assert.equal(callback.protocol, 'obsidian:');
+    assert.equal(callback.searchParams.get('provider'), ref.provider);
+    assert.equal(callback.searchParams.get('id'), ref.id);
+    // Obsidian percent-decodes values without treating "+" as a space.
+    const rawVault = callback.search.slice(1).split('&').find(part => part.startsWith('vault='));
+    assert.equal(rawVault, `vault=${encodeURIComponent(vault)}`);
+    const result = parseCapturePayload(payload, { ...ref, capturedAt: callback.searchParams.get('capturedAt') ?? '' });
+    assert.equal(result.title, title);
+    assert.equal(result.url, ref.url);
+    assert.equal(result.acquisition, 'browser');
+    assert.equal(result.first_published_year, undefined);
+    assert.ok(result.description?.includes('\n'));
+  }
 });

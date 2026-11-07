@@ -1,7 +1,7 @@
 import { providerName } from './sources';
 import { ButtonComponent, Modal, Notice, Setting, TFile } from 'obsidian';
 import type WebnovelPlugin from './main';
-import { parseBookUrl, parseSourceHtml } from './sources';
+import { decodeHtmlBytes, parseBookUrl, parseSourceHtml } from './sources';
 import { SourceMetadata, sourceKey } from './types';
 import { toMediaCoreSource } from './media-core-export';
 import { resolveImportRoute } from './media-core-integration';
@@ -35,7 +35,7 @@ export class SingleImportModal extends Modal {
     this.metadata = this.initial?.metadata;
     this.contentEl.addClass('webnovel-import-modal');
     this.contentEl.createEl('h2', { text: this.target ? '关联网文来源' : '导入网文作品' });
-    this.contentEl.createEl('p', { text: this.target ? `将来源关联到「${this.target.basename}」。已有人工内容会保留。` : '粘贴起点或番茄作品详情页链接。获取后可补填缺失资料。' });
+    this.contentEl.createEl('p', { text: this.target ? `将来源关联到「${this.target.basename}」。已有人工内容会保留。` : '粘贴起点、番茄、七猫或晋江的作品详情页链接。获取后可补填缺失资料。' });
     new Setting(this.contentEl).setName('作品链接').addText(text => {
       text.setValue(this.url).setPlaceholder('https://fanqienovel.com/page/…').onChange(value => {
         this.url = value; this.generation++; this.metadata = undefined;
@@ -83,7 +83,7 @@ export class SingleImportModal extends Modal {
         // Bind this file read to the URL selected when it started. Editing the URL
         // invalidates the generation, so the file cannot be applied to another book.
         const ref = parseBookUrl(this.url);
-        const html = await file.text();
+        const html = decodeHtmlBytes(await file.arrayBuffer());
         if (generation !== this.generation) return;
         this.html = html; htmlArea.value = html;
         this.metadata = parseSourceHtml(html, ref, 'html');
@@ -205,7 +205,7 @@ export class SingleImportModal extends Modal {
         if (!plan.candidates.length) return;
         unresolved = true;
         matchArea.createEl('h3', { text: '发现可能已存在的作品' });
-        matchArea.createEl('p', { text: '书名与作者匹配，仅作为候选。选择已有笔记可追加来源并保留个人内容，或选择独立创建。' });
+        matchArea.createEl('p', { text: '请核对书名、作者与笔记路径。选择已有笔记可追加来源并保留个人内容，或选择独立创建。' });
         new Setting(matchArea).setName('导入到').addDropdown(dropdown => {
           dropdown.addOption('', '请选择关联目标或独立创建');
           dropdown.addOption('new', '独立创建作品');
@@ -300,7 +300,7 @@ export class BatchImportModal extends Modal {
     const route = this.plugin.importRoute();
     const independent = route.kind === 'independent';
     this.contentEl.createEl('p', { text: independent
-      ? '每行一个起点或番茄作品详情页。相同来源自动去重；已导入的作品按字段保护规则更新。'
+      ? '每行一个作品详情页链接。相同来源自动去重；已导入的作品按字段保护规则更新。'
       : '每行一个作品详情页。获取后逐条打开预览，核对后交给 Media Core 或复制规范来源 JSON。' });
     if (route.kind === 'unavailable') this.contentEl.createEl('p', { text: route.message });
     const input = this.contentEl.createEl('textarea', { cls: 'webnovel-links-input', attr: { 'aria-label': '作品链接列表' } });

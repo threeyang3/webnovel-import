@@ -1,13 +1,18 @@
 import type { App } from 'obsidian';
 import { SOURCE_V2_PROTOCOL } from '../vendor/media-source-v2.cjs';
 import type { ImportMode } from './types';
+import type { ManualWorkDraft } from './manual-work';
 
 const CORE_ID = 'media-core';
+
+interface ManualWorkPreviewOptions { onAccepted?: () => void }
 
 interface SourceIntake {
   apiVersion: number;
   sourceSchema: string;
   openSourcePreview(source: unknown, options?: { targetUid?: string }): Promise<void>;
+  manualWorkApiVersion?: number;
+  openManualWork?(draft: ManualWorkDraft, options?: ManualWorkPreviewOptions): Promise<void>;
 }
 
 interface PluginRegistry {
@@ -20,6 +25,24 @@ export type ImportRoute =
   | { kind: 'independent' }
   | { kind: 'core'; intake: SourceIntake }
   | { kind: 'unavailable'; message: string };
+
+export type ManualWorkRoute =
+  | { kind: 'core'; openPreview(draft: ManualWorkDraft, options?: ManualWorkPreviewOptions): Promise<void> }
+  | { kind: 'independent'; message?: string };
+
+export function resolveManualWorkRoute(app: App, mode: ImportMode): ManualWorkRoute {
+  const route = resolveImportRoute(app, mode);
+  if (route.kind === 'independent') return route;
+  if (route.kind === 'core') {
+    const intake = route.intake;
+    const open = intake.openManualWork;
+    if (intake.manualWorkApiVersion === 1 && typeof open === 'function') {
+      return { kind: 'core', openPreview: (draft, options) => open.call(intake, draft, options) };
+    }
+    return { kind: 'independent', message: '当前 Media Core 版本尚不支持插件间手动建档。可升级 Media Core，或明确确认独立保存。' };
+  }
+  return { kind: 'independent', message: 'Media Core 当前不可用。可启用兼容版本，或明确确认独立保存。' };
+}
 
 export function resolveImportRoute(app: App, mode: ImportMode): ImportRoute {
   if (mode === 'independent') return { kind: 'independent' };

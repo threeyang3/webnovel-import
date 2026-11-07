@@ -9,7 +9,7 @@ export interface SourceAdapter {
   readonly provider: string;
   readonly name: string;
   readonly recoveryHint: string;
-  readonly browserCapture?: { readonly selectors: readonly string[] };
+  readonly browserCapture?: true;
   matchUrl(url: URL): BookRef | undefined;
   identities(doc: Document, ref: BookRef, resolveUrl: ResolveUrl): Identity[];
   parse(doc: Document, ref: BookRef, resolveUrl: ResolveUrl): SourceFields;
