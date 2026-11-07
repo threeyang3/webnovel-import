@@ -1,0 +1,42 @@
+name: Validate plugin
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/validate.yml"
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "vendor/**"
+      - "package*.json"
+      - "tsconfig.json"
+      - "manifest.json"
+      - "versions.json"
+      - "main.js"
+      - "styles.css"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # The handoff check loads the historical writer from Git.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: git diff --exit-code -- main.js
+      - run: sha256sum --check vendor/media-source-v2.sha256
+      - run: node scripts/verify-media-core-handoff.cjs

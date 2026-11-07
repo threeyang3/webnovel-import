@@ -102,13 +102,15 @@ Source 与 Work 通过所在文件关联，一份笔记可包含多条 Source。
 
 Media Core 使用 `webnovel_import.schema_version: 2` 和 `managed_by: media-core` 标记托管 Work。新建的托管 Work 在 `sources` 中保留 `provider`、`id`、`url` 身份引用。实际观察、证据和采用值由 Media Core 保存。新网文写入器识别托管标记并提供采集导出路径。
 
+兼容的 Media Core 构建在插件实例上暴露 `sourceIntake`。Webnovel Import 检查 `apiVersion: 1` 和 `sourceSchema: 'media-source/v2'` 后调用 `openSourcePreview(source, { targetUid })`。`targetUid` 仅用于明确指定当前作品，归属与候选仍由 Core 判定。调用成功表示预览已准备，保存需要在 Core 界面确认。旧版 Core 可继续接收同一对象的 JSON。
+
 已有独立文件可在 Media Core 的规范来源预览中显式原位交接。适用对象是 UID 和来源归属唯一、来源与旧采用记录完整的 schema 1 网文 Work。导出的来源须已保存在该对象中。预览确认目标文件路径后执行交接，继续使用原 UID、正文、个人属性及未知属性。旧 `sources` 中的完整资料、时间和证据以及 `adopted` 记录原样保留。托管后的新增来源可追加身份引用，旧采用记录保持冻结。身份或记录有冲突时，需先核对。
 
 交接先在原文件冻结旧写入器，同时记录 `handoff_pending`。规范来源经 Media Core 按需保存到实体和 sidecar 的版本 3 后，待完成标记会清除。若在冻结后中断，重新导入同一来源可继续。网文插件的独立刷新仍只适用于 schema 1 文件。
 
 旧写入器验证使用 0.1.1 提交 `2c3ef2aa49a3fd3bacf2a1f15b9f2b15aeb39372` 的真实 Importer，搭配模拟 Vault。schema 1 对照文件可更新。保留两条完整历史来源与旧采用记录的 schema 2 文件，在交接待完成和已完成两种状态下均拒绝刷新、同源另建及关联另一来源。模拟 Markdown 保持字节一致，作品保存与创建次数均为零。开启旧版封面下载后，直接关联另一来源可能在属性拒写之前生成一份未绑定的封面附件。
 
-在包含固定提交的本地仓库运行 `node scripts/verify-media-core-handoff.cjs` 可复跑。
+在包含固定提交的本地仓库运行 `node scripts/verify-media-core-handoff.cjs` 可复跑历史写入器检查。当前写入器在封面请求前核对目标笔记的属性，并在提交属性时再次校验。
 
 ### 更新共享产物
 

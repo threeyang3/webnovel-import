@@ -4,6 +4,7 @@ import type WebnovelPlugin from './main';
 import { parseBookUrl, parseSourceHtml } from './sources';
 import { SourceMetadata, sourceKey } from './types';
 import { toMediaCoreSource } from './media-core-export';
+import { resolveImportRoute } from './media-core-integration';
 import { isCoreManaged } from './merge';
 
 async function copyMediaCoreSource(metadata: SourceMetadata, archive = false): Promise<void> {
@@ -20,12 +21,13 @@ export class SingleImportModal extends Modal {
   private form!: HTMLElement;
   private metadata?: SourceMetadata;
   private generation = 0;
+  private submitting = false;
   private fallback?: HTMLDetailsElement;
 
   constructor(
     private plugin: WebnovelPlugin,
     private target?: TFile,
-    private initial?: { url?: string; metadata?: SourceMetadata; onSaved?: () => void },
+    private initial?: { url?: string; metadata?: SourceMetadata; onAccepted?: () => void },
   ) { super(plugin.app); }
 
   onOpen(): void {
@@ -154,17 +156,35 @@ export class SingleImportModal extends Modal {
       if (edited.cover_url && !/^https?:\/\//i.test(edited.cover_url)) throw new Error('封面链接须为 http 或 https 地址。');
       if (!edited.title.trim()) throw new Error('请填写作品标题。');
     };
-    const exports = new Setting(this.form).setName('交给 Media Core')
-      .setDesc('复制这次预览的来源资料，在 Media Core 中核对并收录。');
-    exports.addButton(button => button.setButtonText('复制给 Media Core').onClick(async () => {
+    const route = this.plugin.importRoute();
+    const exports = new Setting(this.form).setName('交给 Media Core');
+    if (route.kind === 'core') {
+      exports.setDesc('在 Media Core 中查看匹配和字段差异，再确认保存。');
+      exports.addButton(button => button.setButtonText('导入 Media Core').setCta().onClick(async () => {
+        if (this.submitting) return;
+        this.submitting = true;
+        button.setDisabled(true);
+        try {
+          readForm();
+          await this.plugin.openCorePreview(toMediaCoreSource(edited), this.target);
+          this.initial?.onAccepted?.();
+          this.close();
+        } catch (error) { this.status.setText(errorText(error)); }
+        finally { this.submitting = false; button.setDisabled(false); }
+      }));
+    } else if (route.kind === 'unavailable') {
+      exports.setDesc(route.message);
+    }
+    exports.addButton(button => button.setButtonText('复制规范来源 JSON').onClick(async () => {
       try {
         readForm();
         await copyMediaCoreSource(edited);
         this.status.setText(copiedMessage);
       } catch (error) { this.status.setText(errorText(error)); }
     }));
+    if (route.kind !== 'independent') return;
     if (this.target && isCoreManaged(this.app.metadataCache.getFileCache(this.target)?.frontmatter?.webnovel_import)) {
-      this.form.createEl('p', { text: '此作品由 Media Core 托管。请复制资料后在 Media Core 中更新。' });
+      this.form.createEl('p', { text: '此作品由 Media Core 托管。请切换导入模式或复制规范来源 JSON 后在 Media Core 中更新。' });
       return;
     }
     const matchArea = this.form.createDiv({ cls: 'webnovel-matches' });
@@ -200,19 +220,24 @@ export class SingleImportModal extends Modal {
     };
     updateMatches();
     new Setting(this.form).addButton(button => button.setButtonText(this.target ? '保存来源关联' : '导入作品').setCta().onClick(async () => {
+      if (this.submitting) return;
+      this.submitting = true;
       button.setDisabled(true);
       try {
+        const current = this.plugin.importRoute();
+        if (current.kind === 'unavailable') throw new Error(current.message);
+        if (current.kind !== 'independent') throw new Error('导入模式已切换，请重新打开导入预览。');
         readForm();
         if (matchError) throw new Error(matchError);
         if (unresolved) throw new Error('请先选择关联已有作品或独立创建。');
         this.status.setText('正在保存作品资料…');
         const result = await this.plugin.importer.import(edited, this.target ?? selected, { createSeparate });
-        this.initial?.onSaved?.();
+        this.initial?.onAccepted?.();
         new Notice(`${result.created ? '已创建' : '已更新'}：${result.file.basename}${result.warnings.length ? `\n${result.warnings.join('\n')}` : ''}`, 8000);
         await this.app.workspace.getLeaf(false).openFile(result.file);
         this.close();
       } catch (error) { this.status.setText(errorText(error)); }
-      finally { button.setDisabled(false); }
+      finally { this.submitting = false; button.setDisabled(false); }
     }));
   }
 
@@ -223,7 +248,7 @@ export class ArchiveExportModal extends Modal {
   constructor(private plugin: WebnovelPlugin, private file: TFile) { super(plugin.app); }
 
   onOpen(): void {
-    this.contentEl.createEl('h2', { text: '导出当前网文来源给 Media Core' });
+    this.contentEl.createEl('h2', { text: '将当前网文交给 Media Core' });
     this.contentEl.createEl('p', { text: '选择已保存的来源。可靠的原观察时间会沿用，无法核对时间的资料供预览确认。' });
     const status = this.contentEl.createEl('p', { attr: { role: 'status' } });
     let sources: SourceMetadata[];
@@ -236,7 +261,23 @@ export class ArchiveExportModal extends Modal {
       sources.forEach((source, index) => dropdown.addOption(String(index), `${source.provider} · ${source.id}`));
       dropdown.setValue('0').onChange(value => { selected = Number(value); });
     });
-    actions.addButton(button => button.setButtonText('复制给 Media Core').setCta().onClick(async () => {
+    const route = resolveImportRoute(this.app, 'media-core');
+    if (route.kind === 'core') {
+      actions.addButton(button => {
+        let opening = false;
+        button.setButtonText('导入 Media Core').setCta().onClick(async () => {
+          if (opening) return;
+          opening = true;
+          button.setDisabled(true);
+          try {
+            await this.plugin.openCorePreview(toMediaCoreSource(sources[selected], { archive: true }), this.file, 'media-core');
+            this.close();
+          } catch (error) { status.setText(errorText(error)); }
+          finally { opening = false; button.setDisabled(false); }
+        });
+      });
+    } else if (route.kind === 'unavailable') status.setText(route.message);
+    actions.addButton(button => button.setButtonText('复制规范来源 JSON').onClick(async () => {
       try {
         await copyMediaCoreSource(sources[selected], true);
         status.setText(copiedMessage);
@@ -256,7 +297,12 @@ export class BatchImportModal extends Modal {
   onOpen(): void {
     this.contentEl.addClass('webnovel-import-modal');
     this.contentEl.createEl('h2', { text: '批量导入作品链接' });
-    this.contentEl.createEl('p', { text: '每行一个起点或番茄作品详情页。相同来源自动去重；已导入的作品按字段保护规则更新。' });
+    const route = this.plugin.importRoute();
+    const independent = route.kind === 'independent';
+    this.contentEl.createEl('p', { text: independent
+      ? '每行一个起点或番茄作品详情页。相同来源自动去重；已导入的作品按字段保护规则更新。'
+      : '每行一个作品详情页。获取后逐条打开预览，核对后交给 Media Core 或复制规范来源 JSON。' });
+    if (route.kind === 'unavailable') this.contentEl.createEl('p', { text: route.message });
     const input = this.contentEl.createEl('textarea', { cls: 'webnovel-links-input', attr: { 'aria-label': '作品链接列表' } });
     const status = this.contentEl.createEl('p', { attr: { role: 'status' } });
     const results = this.contentEl.createEl('ul', { cls: 'webnovel-results' });
@@ -264,7 +310,7 @@ export class BatchImportModal extends Modal {
     let start: ButtonComponent;
     actions.addButton(button => {
       start = button;
-      button.setButtonText('开始导入').setCta().onClick(async () => {
+      button.setButtonText(independent ? '开始导入' : '批量获取资料').setCta().onClick(async () => {
         if (this.running) return;
         results.empty();
         const urls = new Map<string, string>();
@@ -282,8 +328,18 @@ export class BatchImportModal extends Modal {
           try {
             const metadata = await this.plugin.importer.fetch(url);
             if (this.cancelled) break;
-            const result = await this.plugin.importer.import(metadata);
-            results.createEl('li', { text: `${result.created ? '新建' : '更新'}：${result.file.path}${result.warnings.length ? `（${result.warnings.join('；')}）` : ''}` });
+            if (independent) {
+              const current = this.plugin.importRoute();
+              if (current.kind === 'unavailable') throw new Error(current.message);
+              if (current.kind !== 'independent') throw new Error('导入模式已切换，请重新打开批量导入。');
+              const result = await this.plugin.importer.import(metadata);
+              results.createEl('li', { text: `${result.created ? '新建' : '更新'}：${result.file.path}${result.warnings.length ? `（${result.warnings.join('；')}）` : ''}` });
+            } else {
+              const item = results.createEl('li', { text: `${metadata.title} · ${providerName(metadata.provider)} ` });
+              new ButtonComponent(item).setButtonText('预览资料').onClick(() => {
+                new SingleImportModal(this.plugin, undefined, { metadata }).open();
+              });
+            }
             done++;
           } catch (error) {
             const item = results.createEl('li', { cls: 'webnovel-error' });

@@ -1,6 +1,6 @@
 import { matchesWork } from './matching';
 import { providerName, getSourceAdapter } from './sources';
-import { App, TFile, normalizePath, requestUrl, stringifyYaml } from 'obsidian';
+import { App, TFile, getFrontMatterInfo, normalizePath, parseYaml, requestUrl, stringifyYaml } from 'obsidian';
 import { getSources, isCoreManaged, upsertFrontmatter } from './merge';
 import { parseBookUrl, parseSourceHtml } from './sources';
 import { BookRef, ImportSettings, SourceMetadata, sourceKey } from './types';
@@ -136,16 +136,21 @@ export class Importer {
     }
     const plan = this.previewMatches(metadata);
     const warnings = [...metadata.warnings, ...plan.warnings];
-    const matches = plan.exact ? [plan.exact] : [];
-    if (explicitTarget && matches[0] && matches[0] !== explicitTarget) {
-      throw new Error(`此来源已经关联 ${matches[0].path}，本次未改动其他文件。`);
+    if (explicitTarget && plan.exact && plan.exact !== explicitTarget) {
+      throw new Error(`此来源已经关联 ${plan.exact.path}，本次未改动其他文件。`);
     }
-    const target = explicitTarget ?? matches[0];
+    const target = explicitTarget ?? plan.exact;
     if (!target && plan.candidates.length && !createSeparate) {
       throw new Error(`发现书名与作者匹配的已有作品，请单独预览并选择关联或独立创建：${plan.candidates.map(f => f.path).join('；')}`);
     }
-    if (target && isCoreManaged(this.app.metadataCache.getFileCache(target)?.frontmatter?.webnovel_import)) {
-      throw new Error('此作品的来源由 Media Core 托管，请把采集结果导出到 Media Core。');
+    if (target) {
+      // A handoff can update the note before Obsidian refreshes its metadata cache.
+      if (typeof getFrontMatterInfo === 'function') {
+        const current = getFrontMatterInfo(await this.app.vault.read(target));
+        if (current.exists) getSources(parseYaml(current.frontmatter) ?? {});
+      } else {
+        this.sources(target); // Obsidian 1.5.0–1.5.6 do not expose getFrontMatterInfo.
+      }
     }
     const cover = await this.cover(metadata, warnings);
     const options = { uid: `work-${crypto.randomUUID()}`, cover, summaryLength: this.settings().summaryLength };

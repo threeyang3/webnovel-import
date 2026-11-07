@@ -177,4 +177,5 @@ test('built bookmarklet uses adapter selectors and produces a valid capture with
   assert.equal(result.url, qidianRef.url);
   assert.equal(new URL(uri).searchParams.get('vault'), 'Sandbox');
   assert.equal(new URL(uri).searchParams.get('id'), qidianRef.id);
+  assert.equal(new URL(uri).searchParams.get('capturedAt'), result.fetched_at);
 });

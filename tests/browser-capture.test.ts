@@ -39,3 +39,12 @@ test('clipboard receiver rejects a platform without browser-capture support', ()
   assert.throws(() => parseCapturePayload(encodeCapture({ ...metadata, provider: 'fanqie',
     id: '7143038691944959011', url: 'https://fanqienovel.com/page/7143038691944959011' })), /标识不一致/);
 });
+
+test('automatic return checks the capture time even if the clipboard still contains the same book', () => {
+  const raw = encodeCapture(metadata);
+  const identity = { provider: metadata.provider, id: metadata.id };
+  assert.throws(() => parseCapturePayload(raw, { ...identity, capturedAt: '2026-11-01T06:01:00.000Z' }), /剪贴板内容/);
+  assert.throws(() => parseCapturePayload(raw, { ...identity, id: '1048862481' }), /剪贴板内容/);
+  assert.equal(parseCapturePayload(raw, { ...identity, capturedAt: metadata.fetched_at }).title, metadata.title);
+  assert.equal(parseCapturePayload(raw, identity).title, metadata.title);
+});

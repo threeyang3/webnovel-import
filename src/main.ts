@@ -1,12 +1,13 @@
 import { providerName } from './sources';
 import { Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
 import { Importer, folderPath } from './importer';
-import { DEFAULT_SETTINGS, ImportSettings } from './types';
+import { DEFAULT_SETTINGS, ImportSettings, ImportMode } from './types';
 import { ArchiveExportModal, BatchImportModal, SingleImportModal } from './ui';
 import { isCoreManaged } from './merge';
 import { makeBookmarklet, parseCapturePayload } from './browser-capture';
 import { parseBookUrl } from './sources';
 import { sourceKey } from './types';
+import { openMediaCorePreview, resolveImportRoute } from './media-core-integration';
 
 export default class WebnovelPlugin extends Plugin {
   settings: ImportSettings = { ...DEFAULT_SETTINGS };
@@ -20,8 +21,13 @@ export default class WebnovelPlugin extends Plugin {
     this.addCommand({ id: 'import-links', name: '批量导入网文作品链接', callback: () => new BatchImportModal(this).open() });
     this.addCommand({ id: 'import-browser-capture', name: '从浏览器采集结果导入', callback: () => void this.receiveBrowserCapture() });
     this.registerObsidianProtocolHandler('webnovel-import', params => {
-      if (params.vault && params.vault !== this.app.vault.getName()) return;
-      if (params.clipboard === '1') void this.receiveBrowserCapture({ provider: params.provider, id: params.id });
+      if (params.vault && params.vault !== this.app.vault.getName()) {
+        new Notice(`此采集书签对应 Vault「${params.vault}」。请切换到对应 Vault，或在当前 Vault 重新复制书签。`, 10000);
+        return;
+      }
+      if (params.clipboard === '1') void this.receiveBrowserCapture({
+        provider: params.provider, id: params.id, capturedAt: params.capturedAt,
+      });
     });
     this.addCommand({
       id: 'attach-source', name: '给当前作品关联起点或番茄来源',
@@ -36,7 +42,7 @@ export default class WebnovelPlugin extends Plugin {
       id: 'refresh-current', name: '刷新当前网文的来源资料',
       checkCallback: checking => {
         const file = this.activeMarkdown();
-        if (!file) return false;
+        if (!file || this.importRoute().kind !== 'independent') return false;
         const state = this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import;
         if (!state || isCoreManaged(state)) return false;
         if (!checking) void this.refresh(file);
@@ -44,7 +50,7 @@ export default class WebnovelPlugin extends Plugin {
       },
     });
     this.addCommand({
-      id: 'export-current-to-media-core', name: '导出当前网文来源给 Media Core',
+      id: 'export-current-to-media-core', name: '将当前网文交给 Media Core',
       checkCallback: checking => {
         const file = this.activeMarkdown();
         if (!file || this.app.metadataCache.getFileCache(file)?.frontmatter?.webnovel_import?.schema_version !== 1) return false;
@@ -60,29 +66,39 @@ export default class WebnovelPlugin extends Plugin {
     return file?.extension === 'md' ? file : null;
   }
 
+  importRoute() { return resolveImportRoute(this.app, this.settings.importMode); }
+
+  async openCorePreview(source: Record<string, unknown>, target?: TFile, mode = this.settings.importMode): Promise<void> {
+    let targetUid: string | undefined;
+    if (target) {
+      if (this.app.vault.getAbstractFileByPath(target.path) !== target) throw new Error('目标笔记已不存在。');
+      const uid: unknown = this.app.metadataCache.getFileCache(target)?.frontmatter?.uid;
+      if (typeof uid !== 'string' || !uid.trim()) throw new Error('当前笔记缺少可用的作品 UID，无法在 Media Core 中指定该笔记。');
+      targetUid = uid;
+    }
+    await openMediaCorePreview(this.app, mode, source, targetUid);
+  }
+
   openSourcePage(input: string, target?: TFile): void {
     const ref = parseBookUrl(input);
     this.browserTarget = { key: sourceKey(ref), file: target };
     window.open(ref.url, '_blank', 'noopener,noreferrer');
   }
 
-  private async receiveBrowserCapture(expected?: { provider: string; id: string }): Promise<void> {
+  private async receiveBrowserCapture(expected?: { provider: string; id: string; capturedAt?: string }): Promise<void> {
     try {
-      const metadata = parseCapturePayload(await navigator.clipboard.readText());
-      if (expected && (metadata.provider !== expected.provider || metadata.id !== expected.id)) {
-        throw new Error('剪贴板内容与刚采集的作品不一致，请重新点击该作品的采集书签。');
-      }
+      const metadata = parseCapturePayload(await navigator.clipboard.readText(), expected);
       const pending = this.browserTarget;
       const target = pending?.key === sourceKey(metadata) ? pending.file : undefined;
       if (target && this.app.vault.getAbstractFileByPath(target.path) !== target) {
         throw new Error('原先选定的目标笔记已经移动或删除，请重新打开关联来源入口。');
       }
       // Always preview first. A browser URI never writes a note or downloads a cover itself.
-      new SingleImportModal(this, target, { metadata, onSaved: () => {
+      new SingleImportModal(this, target, { metadata, onAccepted: () => {
         if (pending?.key === sourceKey(metadata) && this.browserTarget === pending) this.browserTarget = undefined;
       } }).open();
     } catch (error) {
-      new Notice(`浏览器采集导入失败：${error instanceof Error ? error.message : String(error)}`, 10000);
+      new Notice(`浏览器采集导入失败：${error instanceof Error ? error.message : String(error)}\n可从作品链接导入弹窗选择已保存的 HTML。`, 10000);
     }
   }
 
@@ -93,7 +109,9 @@ export default class WebnovelPlugin extends Plugin {
     let recoveryUrl: string | undefined;
     for (const source of sources) {
       try {
+        if (this.importRoute().kind !== 'independent') throw new Error('当前模式已切换，请通过单条预览交给 Media Core。');
         const metadata = await this.importer.fetch(source.url);
+        if (this.importRoute().kind !== 'independent') throw new Error('当前模式已切换，请通过单条预览交给 Media Core。');
         const result = await this.importer.import(metadata, file);
         new Notice(`${providerName(source.provider)}已刷新：采用 ${result.adopted.length} 项，保留 ${result.preserved.length} 项人工/其他来源值。${result.warnings.length ? `\n${result.warnings.join('\n')}` : ''}`, 8000);
       } catch (error) {
@@ -113,7 +131,14 @@ class WebnovelSettings extends PluginSettingTab {
   display(): void {
     this.containerEl.empty();
     this.containerEl.createEl('h2', { text: 'Webnovel Import' });
-    this.containerEl.createEl('p', { text: '作品元数据导入器 · 0.1.1 开发预览。起点支持浏览器页面采集；普通 HTTP 获取仍可能遇到验证页。' });
+    this.containerEl.createEl('p', { text: `作品元数据导入器 · ${this.plugin.manifest.version} 开发预览。起点支持浏览器页面采集；普通 HTTP 获取仍可能遇到验证页。` });
+    new Setting(this.containerEl).setName('导入模式')
+      .setDesc('自动模式优先使用 Media Core；确认未安装时才独立保存。已安装但不可用时，可以复制规范来源 JSON 或在这里明确切换模式。')
+      .addDropdown(dropdown => dropdown.addOptions({ auto: '自动', 'media-core': 'Media Core', independent: '独立' })
+        .setValue(this.plugin.settings.importMode).onChange(async value => {
+          this.plugin.settings.importMode = value as ImportMode;
+          await this.plugin.saveSettings();
+        }));
     new Setting(this.containerEl).setName('起点浏览器采集书签')
       .setDesc('复制后，在浏览器新建书签，把内容粘贴到书签的网址栏。正常打开起点作品页后点击书签，即可把资料带回当前 Vault 的导入预览。只读取作品资料，通过本机剪贴板传递。')
       .addButton(button => button.setButtonText('复制采集书签').onClick(async () => {

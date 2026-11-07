@@ -13,7 +13,7 @@ export function encodeCapture(metadata: SourceMetadata): string {
 }
 
 /** Clipboard content is data: accept only the metadata fields used by the import preview. */
-export function parseCapturePayload(raw: string): SourceMetadata {
+export function parseCapturePayload(raw: string, expected?: { provider: string; id: string; capturedAt?: string }): SourceMetadata {
   let packet;
   try { packet = JSON.parse(raw); }
   catch { throw new Error('剪贴板不是网文采集结果。请在正常显示的起点作品页点击采集书签。'); }
@@ -31,6 +31,10 @@ export function parseCapturePayload(raw: string): SourceMetadata {
   }
   if (typeof value.fetched_at !== 'string' || !Number.isFinite(Date.parse(value.fetched_at))) {
     throw new Error('采集资料缺少有效获取时间，请重新采集。');
+  }
+  if (expected && (ref.provider !== expected.provider || ref.id !== expected.id
+    || (expected.capturedAt !== undefined && value.fetched_at !== expected.capturedAt))) {
+    throw new Error('剪贴板内容与刚采集的资料不一致，请重新点击该作品的采集书签。');
   }
   const result: SourceMetadata = {
     ...ref, title: value.title.trim(), authors: value.authors.map((s: string) => s.trim()),
