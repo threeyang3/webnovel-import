@@ -32,13 +32,17 @@ export interface SourceMetadata extends BookRef {
 }
 
 export interface ImportSettings {
+  importMode: ImportMode;
   outputFolder: string;
   coverFolder: string;
   downloadCovers: boolean;
   summaryLength: number;
 }
 
+export type ImportMode = 'auto' | 'media-core' | 'independent';
+
 export const DEFAULT_SETTINGS: ImportSettings = {
+  importMode: 'auto',
   outputFolder: '网文',
   coverFolder: '_assets/webnovel-import',
   downloadCovers: true,

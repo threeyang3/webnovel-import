@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeCapture, parseCapturePayload } from '../src/browser-capture';
+import { encodeCapture, makeBookmarklet, parseCapturePayload } from '../src/browser-capture';
 import type { SourceMetadata } from '../src/types';
 
 const metadata: SourceMetadata = {
@@ -11,6 +11,18 @@ const metadata: SourceMetadata = {
   last_updated_at: '2026-11-01 12:30:00', fetched_at: '2026-11-01T06:00:00.000Z',
   acquisition: 'browser', evidence: { title: '#bookName' }, warnings: [],
 };
+
+test('bookmarklet export preserves script newlines in a single URL', t => {
+  const bundle = 'var WebnovelBrowser={capture(){return `first\nsecond`}}';
+  Reflect.set(globalThis, '__BROWSER_CAPTURE_CODE__', bundle);
+  t.after(() => Reflect.deleteProperty(globalThis, '__BROWSER_CAPTURE_CODE__'));
+
+  const bookmark = makeBookmarklet('验收 + Vault');
+  assert.match(bookmark, /^javascript:[^\s]+$/);
+  const script = decodeURIComponent(bookmark.slice('javascript:'.length));
+  assert.ok(script.includes(bundle));
+  assert.ok(script.includes('WebnovelBrowser.capture("验收 + Vault")'));
+});
 
 test('browser capture preserves source metadata while excluding personal fields and unsupported publication claims', () => {
   const raw = encodeCapture({ ...metadata, personal_review: '不应进入来源', uid: '不要采用', first_published_year: 2026 } as SourceMetadata);
@@ -38,4 +50,13 @@ test('browser capture rejects unrelated clipboard content, incompatible versions
 test('clipboard receiver rejects a platform without browser-capture support', () => {
   assert.throws(() => parseCapturePayload(encodeCapture({ ...metadata, provider: 'fanqie',
     id: '7143038691944959011', url: 'https://fanqienovel.com/page/7143038691944959011' })), /标识不一致/);
+});
+
+test('automatic return checks the capture time even if the clipboard still contains the same book', () => {
+  const raw = encodeCapture(metadata);
+  const identity = { provider: metadata.provider, id: metadata.id };
+  assert.throws(() => parseCapturePayload(raw, { ...identity, capturedAt: '2026-11-01T06:01:00.000Z' }), /剪贴板内容/);
+  assert.throws(() => parseCapturePayload(raw, { ...identity, id: '1048862481' }), /剪贴板内容/);
+  assert.equal(parseCapturePayload(raw, { ...identity, capturedAt: metadata.fetched_at }).title, metadata.title);
+  assert.equal(parseCapturePayload(raw, identity).title, metadata.title);
 });

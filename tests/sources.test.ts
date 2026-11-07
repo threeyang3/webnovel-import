@@ -169,12 +169,16 @@ test('built bookmarklet uses adapter selectors and produces a valid capture with
     window: { alert: (message: string) => { throw new Error(message); } },
   });
   runInContext(bundle.outputFiles[0].text, context);
-  await runInContext('WebnovelBrowser.capture("Sandbox")', context);
+  const vault = 'Webnovel Intake QA + 测试';
+  await runInContext(`WebnovelBrowser.capture(${JSON.stringify(vault)})`, context);
   const result = parseCapturePayload(payload);
   assert.equal(result.title, '页面书名');
   assert.equal(result.cover_url, 'https://bookcover.yuewen.com/qdbimg/349573/1010868264/600.webp');
   assert.equal(result.description, '测试简介第一段。\n第二段提到2020年。\n第三段。');
   assert.equal(result.url, qidianRef.url);
-  assert.equal(new URL(uri).searchParams.get('vault'), 'Sandbox');
+  // Obsidian percent-decodes values without treating "+" as a space.
+  const rawVault = new URL(uri).search.slice(1).split('&').find(part => part.startsWith('vault='));
+  assert.equal(rawVault, `vault=${encodeURIComponent(vault)}`);
   assert.equal(new URL(uri).searchParams.get('id'), qidianRef.id);
+  assert.equal(new URL(uri).searchParams.get('capturedAt'), result.fetched_at);
 });
