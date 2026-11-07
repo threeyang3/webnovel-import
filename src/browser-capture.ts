@@ -5,7 +5,8 @@ declare const __BROWSER_CAPTURE_CODE__: string;
 
 /** This bundle is built from our parser, never from downloaded website scripts. */
 export function makeBookmarklet(vault: string): string {
-  return `javascript:void(function(){${__BROWSER_CAPTURE_CODE__};WebnovelBrowser.capture(${JSON.stringify(vault)});})()`;
+  const script = `void(function(){${__BROWSER_CAPTURE_CODE__};WebnovelBrowser.capture(${JSON.stringify(vault)});})()`;
+  return `javascript:${encodeURIComponent(script)}`;
 }
 
 export function encodeCapture(metadata: SourceMetadata): string {

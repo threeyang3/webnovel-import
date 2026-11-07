@@ -17,9 +17,10 @@ export async function capture(vault: string): Promise<void> {
       // Browsers can deny clipboard access. Let the user copy the same data explicitly.
       if (window.prompt('浏览器未允许直接复制。请复制下方完整资料，再按确定返回 Obsidian；取消则停止。', payload) === null) return;
     }
+    // Obsidian decodes percent escapes but leaves form-encoded spaces as "+".
     const query = new URLSearchParams({
       vault, clipboard: '1', provider: ref.provider, id: ref.id, capturedAt: metadata.fetched_at,
-    });
+    }).toString().replace(/\+/g, '%20');
     location.assign(`obsidian://webnovel-import?${query}`);
   } catch (error) {
     window.alert(`网文资料尚未采集：${error instanceof Error ? error.message : String(error)}`);
